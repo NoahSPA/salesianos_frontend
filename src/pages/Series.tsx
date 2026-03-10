@@ -205,7 +205,6 @@ export function SeriesPage() {
                   setCreating(false)
                 }
               }}
-              disabled={creating}
             >
               {creating ? 'Creando…' : 'Crear'}
             </button>

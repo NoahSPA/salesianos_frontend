@@ -1,5 +1,3 @@
-import React from 'react'
-
 type SwitchProps = {
   checked: boolean
   onChange: (checked: boolean) => void
