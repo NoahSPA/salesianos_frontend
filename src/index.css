@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/* Dark mode solo cuando el usuario elige tema oscuro (clase en html), no por preferencia del sistema */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #006600;
+  --color-primary-hover: #004d00;
+  --color-primary-light: #e6f2e6;
+  --color-primary-focus: rgba(0, 102, 0, 0.4);
+}
+
+@layer base {
+  html, body {
+    height: 100%;
+  }
+  html {
+    @apply bg-slate-100 text-slate-900;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  html.dark {
+    @apply bg-slate-950 text-slate-100;
+  }
+  body {
+    @apply bg-slate-50 text-slate-900;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  .dark body {
+    @apply bg-slate-900 text-slate-100;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html, body {
+      transition-duration: 0.01ms;
+    }
+  }
+}
+
+@layer components {
+  .sf-card {
+    @apply rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08);
+    transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+  .dark .sf-card {
+    box-shadow: none;
+  }
+  .sf-card-muted {
+    @apply rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50;
+    transition: background-color 0.25s ease, border-color 0.25s ease;
+  }
+
+  .sf-input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100;
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  }
+  .sf-input:focus {
+    border-color: var(--color-primary);
+    --tw-ring-color: var(--color-primary-light);
+    @apply ring-4;
+  }
+  .sf-input.sf-input-invalid {
+    @apply border-red-500 dark:border-red-400;
+    --tw-ring-color: rgb(248 113 113 / 0.4);
+  }
+  .sf-input.sf-input-invalid:focus {
+    @apply border-red-500 dark:border-red-400;
+  }
+
+  .sf-btn {
+    @apply inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium transition;
+  }
+  .sf-btn-primary {
+    background-color: var(--color-primary);
+    @apply text-white disabled:opacity-60;
+  }
+  .sf-btn-primary:hover:not(:disabled) {
+    background-color: var(--color-primary-hover);
+  }
+  .sf-btn-secondary {
+    @apply border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600;
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  }
+  /* Etiquetas/badges unificadas: mismo estilo en todo el sistema */
+  .sf-badge {
+    @apply inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold;
+  }
+  .sf-badge-slate {
+    @apply border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200;
+  }
+  .sf-badge-emerald {
+    @apply border-emerald-400/70 bg-emerald-100 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-100;
+  }
+  .sf-badge-amber {
+    @apply border-amber-400/70 bg-amber-100 text-amber-800 dark:border-amber-600 dark:bg-amber-900/50 dark:text-amber-100;
+  }
+  .sf-badge-blue {
+    @apply border-blue-400/70 bg-blue-100 text-blue-800 dark:border-blue-600 dark:bg-blue-900/50 dark:text-blue-100;
+  }
+  .sf-badge-indigo {
+    @apply border-indigo-400/70 bg-indigo-100 text-indigo-800 dark:border-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-100;
+  }
+  .sf-badge-violet {
+    @apply border-violet-400/70 bg-violet-100 text-violet-800 dark:border-violet-600 dark:bg-violet-900/50 dark:text-violet-100;
+  }
+  .sf-badge-rose {
+    @apply border-rose-400/70 bg-rose-100 text-rose-800 dark:border-rose-600 dark:bg-rose-900/50 dark:text-rose-100;
+  }
+  .sf-badge-cyan {
+    @apply border-cyan-400/70 bg-cyan-100 text-cyan-800 dark:border-cyan-600 dark:bg-cyan-900/50 dark:text-cyan-100;
+  }
+  .sf-badge-orange {
+    @apply border-orange-400/70 bg-orange-100 text-orange-800 dark:border-orange-600 dark:bg-orange-900/50 dark:text-orange-100;
+  }
+
+  .sf-pill {
+    @apply rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700;
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  }
+  .sf-pill-active {
+    border-color: var(--color-primary-light);
+    background-color: var(--color-primary);
+    @apply text-white;
+  }
+  .sf-pill-active:hover {
+    background-color: var(--color-primary-hover);
+  }
+
+  .sf-loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--color-primary-light);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: sf-spin 0.8s linear infinite;
+  }
+  .sf-loading-spinner.sf-loading-spinner-sm {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+  }
+}
+
+@keyframes sf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+

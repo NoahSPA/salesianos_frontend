@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+  </head>
+  <body>
+    <script>
+      (function(){
+        var t = localStorage.getItem('salesianos-theme');
+        if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches))
+          document.documentElement.classList.add('dark');
+        else
+          document.documentElement.classList.remove('dark');
+      })();
+    </script>
+    <div id="root">
+      <div class="sf-loading-page">
+        <div class="sf-loading-spinner-inline"></div>
+        <span class="sf-loading-text">Cargando…</span>
+      </div>
+    </div>
+    <style>
+      @keyframes sf-spin-inline{to{transform:rotate(360deg)}}
+      .sf-loading-page{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:1rem;background:#f1f5f9;transition:background .2s ease}
+      html.dark .sf-loading-page{background:#0f172a}
+      .sf-loading-spinner-inline{width:40px;height:40px;border:3px solid #e6f2e6;border-top-color:#006600;border-radius:50%;animation:sf-spin-inline .8s linear infinite}
+      .sf-loading-text{font-size:0.875rem;color:#64748b;transition:color .2s ease}
+      html.dark .sf-loading-text{color:#94a3b8}
+    </style>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
