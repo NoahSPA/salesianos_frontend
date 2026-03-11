@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { ChevronDown, Key, LogOut, User } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
@@ -57,6 +58,23 @@ export function AppLayout() {
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
   const [changePasswordErrors, setChangePasswordErrors] = useState<Record<string, boolean>>({})
   const [changingPassword, setChangingPassword] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+
+  const displayName = me?.player
+    ? `${me.player.first_name} ${me.player.last_name}`.trim()
+    : me?.username ?? ''
+  const avatarUrl = me?.player?.avatar_url?.trim() || null
+
+  useEffect(() => {
+    if (!userMenuOpen) return
+    function onDocClick(e: MouseEvent) {
+      if (userMenuRef.current?.contains(e.target as Node)) return
+      setUserMenuOpen(false)
+    }
+    document.addEventListener('click', onDocClick)
+    return () => document.removeEventListener('click', onDocClick)
+  }, [userMenuOpen])
 
   return (
     <div className="flex h-dvh flex-col">
@@ -67,39 +85,78 @@ export function AppLayout() {
             <img src="/logo.png" alt="Salesianos F.C." className="h-10 w-auto object-contain" />
             <span>Salesianos FC</span>
           </Link>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={toggleTheme}
-              className="rounded-md p-2 text-slate-600 transition-colors duration-300 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+              className="rounded-lg p-2 text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
               aria-label={theme === 'dark' ? 'Usar tema claro' : 'Usar tema oscuro'}
             >
               {theme === 'dark' ? <IconSun /> : <IconMoon />}
             </button>
-            <span className="hidden text-slate-600 transition-colors duration-300 sm:inline dark:text-slate-400">{me?.username}</span>
-            <button
-              type="button"
-              className="text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300"
-              onClick={() => {
-                setChangePasswordOpen(true)
-                setCurrentPassword('')
-                setNewPassword('')
-                setNewPasswordConfirm('')
-                setChangePasswordError(null)
-                setChangePasswordErrors({})
-              }}
-            >
-              Cambiar contraseña
-            </button>
-            <button
-              className="sf-btn sf-btn-secondary px-3 py-1.5"
-              onClick={async () => {
-                await logout()
-                nav('/login')
-              }}
-            >
-              Salir
-            </button>
+            <div className="relative" ref={userMenuRef}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setUserMenuOpen((v) => !v) }}
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 py-1.5 pl-1.5 pr-2.5 transition-colors duration-200 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:hover:border-slate-500 sm:pl-2 sm:pr-3"
+                aria-expanded={userMenuOpen}
+                aria-haspopup="true"
+                aria-label="Menú de usuario"
+              >
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    className="h-8 w-8 shrink-0 rounded-full object-cover"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden') }}
+                  />
+                ) : null}
+                <span className={`h-8 w-8 shrink-0 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
+                  <User className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                </span>
+                <span className="max-w-[120px] truncate text-left text-sm font-medium text-slate-800 dark:text-slate-200 sm:max-w-[160px]">
+                  {displayName || 'Usuario'}
+                </span>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${userMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {userMenuOpen ? (
+                <div
+                  className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
+                  role="menu"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700"
+                    onClick={() => {
+                      setUserMenuOpen(false)
+                      setChangePasswordOpen(true)
+                      setCurrentPassword('')
+                      setNewPassword('')
+                      setNewPasswordConfirm('')
+                      setChangePasswordError(null)
+                      setChangePasswordErrors({})
+                    }}
+                  >
+                    <Key className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
+                    Cambiar contraseña
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700"
+                    onClick={async () => {
+                      setUserMenuOpen(false)
+                      await logout()
+                      nav('/login')
+                    }}
+                  >
+                    <LogOut className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
+                    Salir
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </header>

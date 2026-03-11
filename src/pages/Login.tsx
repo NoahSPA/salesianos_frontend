@@ -68,7 +68,7 @@ export function LoginPage() {
         </button>
       </div>
     <div className="mx-auto flex max-w-sm flex-col items-center justify-center px-4 py-16 text-center">
-      <img src="/logo.png" alt="Salesianos F.C." className="mx-auto mb-6 h-24 w-auto object-contain" />
+      <img src="/logo.png" alt="Salesianos F.C." className="mx-auto mb-6 h-40 w-auto max-w-[280px] object-contain sm:h-44" />
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Ingresar</h1>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
         Accede para administrar el club

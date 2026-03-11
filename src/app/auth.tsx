@@ -3,11 +3,20 @@ import { apiFetch } from './api'
 
 export type Role = 'admin' | 'delegado' | 'tesorero' | 'jugador'
 
+export type MePlayer = {
+  id: string
+  first_name: string
+  last_name: string
+  avatar_url?: string | null
+}
+
 export type Me = {
   id: string
   username: string
   role: Role
   active: boolean
+  player_id?: string | null
+  player?: MePlayer | null
 }
 
 type AuthState = {

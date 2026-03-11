@@ -350,7 +350,7 @@ export function TreasuryPage() {
     { id: 'dashboard', label: 'Resumen' },
     { id: 'pending', label: 'Pendientes' },
     { id: 'status', label: 'Estados' },
-    { id: 'matrix', label: 'Jugador vs períodos' },
+    { id: 'matrix', label: 'Períodos' },
     { id: 'rules', label: 'Reglas' },
   ]
 
