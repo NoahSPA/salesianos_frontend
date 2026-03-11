@@ -1,0 +1,22 @@
+# =============================================================================
+# Salesianos FC - Frontend | Nixpacks (Dokploy / Railway / etc.)
+# =============================================================================
+# Build: npm ci + npm run build (Vite/React/Tailwind).
+# Runtime: sirve la carpeta dist con serve en el puerto 8080.
+# Variables de build Vite (VITE_API_BASE, VITE_MAPBOX_TOKEN): configurarlas
+# en el panel de Dokploy como variables de entorno para que estén en el build.
+# =============================================================================
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build"]
+dependsOn = ["install"]
+
+# Servir estáticos en 8080 (Dokploy suele mapear el puerto)
+[start]
+cmd = "npx serve -s dist -l 8080"
+
+[variables]
+NODE_ENV = "production"
