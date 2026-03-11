@@ -5,6 +5,7 @@ import { useAuth } from '../app/auth'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
+import { formatRutDisplay, normalizeRut, RUT_INVALID_MESSAGE, validateRut } from '../utils/rut'
 import { Switch } from '../ui/Switch'
 
 type Series = { id: string; name: string; active: boolean; color?: string | null }
@@ -150,7 +151,7 @@ export function PlayersPage() {
     setFieldErrors({})
     setFirstName(p.first_name)
     setLastName(p.last_name)
-    setRut(p.rut)
+    setRut(formatRutDisplay(p.rut))
     setBirthDate(typeof p.birth_date === 'string' ? p.birth_date.slice(0, 10) : '')
     setPhone(p.phone)
     setPrimarySeriesId(p.primary_series_id)
@@ -421,6 +422,7 @@ export function PlayersPage() {
                 if (!firstName.trim()) err.firstName = true
                 if (!lastName.trim()) err.lastName = true
                 if (!rut.trim()) err.rut = true
+                else if (!validateRut(rut.trim())) err.rut = true
                 if (!birthDate) err.birthDate = true
                 if (!phone.trim()) err.phone = true
                 if (!primarySeriesId) err.primarySeriesId = true
@@ -434,10 +436,11 @@ export function PlayersPage() {
                 setCreating(true)
                 const positions = [primaryPosition, secondaryPosition].filter(Boolean)
                 try {
+                  const rutNormalized = normalizeRut(rut.trim())
                   const body = {
                     first_name: firstName.trim(),
                     last_name: lastName.trim(),
-                    rut: rut.trim(),
+                    rut: rutNormalized,
                     birth_date: birthDate,
                     phone: phone.trim(),
                     primary_series_id: primarySeriesId,
@@ -505,8 +508,16 @@ export function PlayersPage() {
               </label>
               <label className="block text-sm text-slate-700 dark:text-slate-300">
                 RUT
-                <input className={`mt-1 sf-input ${fieldErrors.rut ? 'sf-input-invalid' : ''}`} value={rut} onChange={(e) => { setRut(e.target.value); clearPlayerFieldError('rut') }} placeholder="12.345.678-5" />
-                {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+                <input
+                  className={`mt-1 sf-input ${fieldErrors.rut ? 'sf-input-invalid' : ''}`}
+                  value={rut}
+                  onChange={(e) => {
+                    setRut(formatRutDisplay(e.target.value))
+                    clearPlayerFieldError('rut')
+                  }}
+                  placeholder="12.345.678-5"
+                />
+                {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{!rut.trim() ? 'Requerido' : RUT_INVALID_MESSAGE}</span>}
               </label>
               <label className="block text-sm text-slate-700 dark:text-slate-300 sm:col-span-2 lg:col-span-1">
                 Foto (URL)

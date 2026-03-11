@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { apiFetch } from '../app/api'
 import { useTheme } from '../app/theme'
+import { formatRutDisplay, normalizeRut, RUT_INVALID_MESSAGE, validateRut } from '../utils/rut'
 
 type PublicInfo = {
   public_link_id: string
@@ -93,6 +94,7 @@ export function PublicConfirmPage() {
           setMsg(null)
           const err: Record<string, boolean> = {}
           if (!rut.trim()) err.rut = true
+          else if (!validateRut(rut)) err.rut = true
           if (!birthDate.trim()) err.birthDate = true
           if (Object.keys(err).length > 0) {
             setFieldErrors(err)
@@ -101,10 +103,11 @@ export function PublicConfirmPage() {
           setFieldErrors({})
           setLoading(true)
           try {
+            const rutNormalized = normalizeRut(rut.trim())
             await apiFetch(`/api/public/convocations/${encodeURIComponent(id)}/respond`, {
               method: 'POST',
               body: JSON.stringify({
-                rut,
+                rut: rutNormalized,
                 birth_date: birthDate,
                 status: statusVal,
                 comment: comment || null,
@@ -125,24 +128,23 @@ export function PublicConfirmPage() {
             className={`mt-1 sf-input ${fieldErrors.rut ? 'sf-input-invalid' : ''}`}
             placeholder="12.345.678-5"
             value={rut}
-            onChange={(e) => { setRut(e.target.value); setFieldErrors((p) => (p.rut ? { ...p, rut: false } : p)) }}
+            onChange={(e) => {
+              const formatted = formatRutDisplay(e.target.value)
+              setRut(formatted)
+              setFieldErrors((p) => (p.rut ? { ...p, rut: false } : p))
+            }}
           />
-          {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+          {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{!rut.trim() ? 'Requerido' : RUT_INVALID_MESSAGE}</span>}
         </label>
         <label className="block text-sm font-medium text-slate-800 dark:text-slate-200">
           Fecha de nacimiento
           <input
             className={`mt-1 sf-input ${fieldErrors.birthDate ? 'sf-input-invalid' : ''}`}
-            type="text"
-            inputMode="numeric"
-            placeholder="YYYY-MM-DD o DD/MM/AAAA"
+            type="date"
             value={birthDate}
             onChange={(e) => { setBirthDate(e.target.value); setFieldErrors((p) => (p.birthDate ? { ...p, birthDate: false } : p)) }}
           />
           {fieldErrors.birthDate && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
-          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Tip: si WhatsApp no muestra selector de fecha, escribe en formato <span className="font-medium">DD/MM/AAAA</span>.
-          </div>
         </label>
 
         <div className="text-sm font-medium text-slate-800 dark:text-slate-200">Tu respuesta</div>
