@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Pencil } from 'lucide-react'
-import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
+import { apiFetch, apiUpload, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
 import { formatRutDisplay, normalizeRut, RUT_INVALID_MESSAGE, validateRut } from '../utils/rut'
+import { getPlayerAvatarUrl } from '../utils/avatar'
 import { Switch } from '../ui/Switch'
 
 type Series = { id: string; name: string; active: boolean; color?: string | null }
@@ -24,6 +25,7 @@ type Player = {
   active: boolean
   notes?: string | null
   avatar_url?: string | null
+  avatar_file_id?: string | null
 }
 
 const PLAYER_POSITIONS: Array<{ code: Player['positions'][number]; label: string; group: string }> = [
@@ -42,9 +44,9 @@ const PLAYER_POSITIONS: Array<{ code: Player['positions'][number]; label: string
   { code: 'cf', label: 'Segundo delantero', group: 'Ataque' },
 ]
 
-function PlayerAvatar(props: { firstName: string; lastName: string; avatarUrl?: string | null; size?: 'sm' | 'md' }) {
+function PlayerAvatar(props: { firstName: string; lastName: string; avatarUrl?: string | null; size?: 'sm' | 'md' | 'lg' }) {
   const [imgError, setImgError] = useState(false)
-  const sizeClass = props.size === 'sm' ? 'h-10 w-10 text-sm' : 'h-12 w-12 text-base'
+  const sizeClass = props.size === 'sm' ? 'h-10 w-10 text-sm' : props.size === 'lg' ? 'h-24 w-24 text-2xl' : 'h-12 w-12 text-base'
   const initials = `${(props.firstName || '').trim().slice(0, 1)}${(props.lastName || '').trim().slice(0, 1)}`.toUpperCase() || '?'
   const showImg = props.avatarUrl?.trim() && !imgError
   return (
@@ -116,6 +118,7 @@ export function PlayersPage() {
   const [levelStars, setLevelStars] = useState<number>(3)
   const [active, setActive] = useState(true)
   const [avatarUrl, setAvatarUrl] = useState('')
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({})
   const [togglingId, setTogglingId] = useState<string | null>(null)
 
@@ -345,7 +348,7 @@ export function PlayersPage() {
                       </button>
                     ) : null}
                     <div className="flex items-start gap-3">
-                      <PlayerAvatar firstName={p.first_name} lastName={p.last_name} avatarUrl={p.avatar_url} size="sm" />
+                      <PlayerAvatar firstName={p.first_name} lastName={p.last_name} avatarUrl={getPlayerAvatarUrl(p)} size="sm" />
                       <div className="min-w-0 flex-1 pr-8">
                         <div className="flex flex-wrap items-center justify-between gap-1.5">
                           <span className="font-medium text-slate-900 truncate dark:text-slate-100">
@@ -495,36 +498,33 @@ export function PlayersPage() {
           {/* 1. Datos del jugador + Serie */}
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-600">
             <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Datos del jugador</div>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Nombre
-                <input className={`mt-1 sf-input ${fieldErrors.firstName ? 'sf-input-invalid' : ''}`} value={firstName} onChange={(e) => { setFirstName(e.target.value); clearPlayerFieldError('firstName') }} />
-                {fieldErrors.firstName && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
-              </label>
-              <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Apellido
-                <input className={`mt-1 sf-input ${fieldErrors.lastName ? 'sf-input-invalid' : ''}`} value={lastName} onChange={(e) => { setLastName(e.target.value); clearPlayerFieldError('lastName') }} />
-                {fieldErrors.lastName && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
-              </label>
-              <label className="block text-sm text-slate-700 dark:text-slate-300">
-                RUT
-                <input
-                  className={`mt-1 sf-input ${fieldErrors.rut ? 'sf-input-invalid' : ''}`}
-                  value={rut}
-                  onChange={(e) => {
-                    setRut(formatRutDisplay(e.target.value))
-                    clearPlayerFieldError('rut')
-                  }}
-                  placeholder="12.345.678-5"
-                />
-                {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{!rut.trim() ? 'Requerido' : RUT_INVALID_MESSAGE}</span>}
-              </label>
-              <label className="block text-sm text-slate-700 dark:text-slate-300 sm:col-span-2 lg:col-span-1">
-                Foto (URL)
-                <input className="mt-1 sf-input" type="url" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://..." />
-              </label>
-              <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Nacimiento
+            <div className="mt-3 flex flex-col gap-4 lg:flex-row">
+              <div className="flex-1 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  Nombre
+                  <input className={`mt-1 sf-input ${fieldErrors.firstName ? 'sf-input-invalid' : ''}`} value={firstName} onChange={(e) => { setFirstName(e.target.value); clearPlayerFieldError('firstName') }} />
+                  {fieldErrors.firstName && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+                </label>
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  Apellido
+                  <input className={`mt-1 sf-input ${fieldErrors.lastName ? 'sf-input-invalid' : ''}`} value={lastName} onChange={(e) => { setLastName(e.target.value); clearPlayerFieldError('lastName') }} />
+                  {fieldErrors.lastName && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+                </label>
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  RUT
+                  <input
+                    className={`mt-1 sf-input ${fieldErrors.rut ? 'sf-input-invalid' : ''}`}
+                    value={rut}
+                    onChange={(e) => {
+                      setRut(formatRutDisplay(e.target.value))
+                      clearPlayerFieldError('rut')
+                    }}
+                    placeholder="12.345.678-5"
+                  />
+                  {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{!rut.trim() ? 'Requerido' : RUT_INVALID_MESSAGE}</span>}
+                </label>
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  Nacimiento
                 <input className={`mt-1 sf-input ${fieldErrors.birthDate ? 'sf-input-invalid' : ''}`} type="date" value={birthDate} onChange={(e) => { setBirthDate(e.target.value); clearPlayerFieldError('birthDate') }} />
                 {fieldErrors.birthDate && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
               </label>
@@ -556,6 +556,64 @@ export function PlayersPage() {
                   <Switch checked={active} onChange={setActive} aria-label="Activo" />
                   <span>Activo</span>
                 </label>
+              ) : null}
+              </div>
+              {editingPlayer ? (
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-600 dark:bg-slate-800/30 lg:min-w-[180px]">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Foto del jugador</div>
+                  {(editingPlayer.avatar_file_id || editingPlayer.avatar_url?.trim()) ? (
+                    <PlayerAvatar
+                      firstName={editingPlayer.first_name}
+                      lastName={editingPlayer.last_name}
+                      avatarUrl={getPlayerAvatarUrl(editingPlayer)}
+                      size="lg"
+                    />
+                  ) : (
+                    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-slate-200 text-3xl text-slate-500 dark:bg-slate-600 dark:text-slate-400">
+                      ?
+                    </div>
+                  )}
+                  <label
+                    className={`inline-flex cursor-pointer items-center justify-center rounded-full p-2 text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:text-slate-200 ${uploadingAvatar ? 'cursor-not-allowed opacity-60' : ''}`}
+                    title={editingPlayer.avatar_file_id || editingPlayer.avatar_url?.trim() ? 'Cambiar foto' : 'Agregar foto'}
+                  >
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      capture="user"
+                      disabled={uploadingAvatar}
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0]
+                        if (!f || !accessToken || !editingPlayer) return
+                        setUploadingAvatar(true)
+                        try {
+                          const updated = await apiUpload<Player>(
+                            `/api/players/${editingPlayer.id}/avatar`,
+                            f,
+                            { authToken: accessToken },
+                          )
+                          setEditingPlayer(updated)
+                          await reload()
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : ERROR_MENSAJE_ES)
+                        } finally {
+                          setUploadingAvatar(false)
+                          e.target.value = ''
+                        }
+                      }}
+                    />
+                    {uploadingAvatar ? (
+                      <span className="text-xs">…</span>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6" aria-hidden>
+                        <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                        <circle cx="9" cy="9" r="2" />
+                        <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                      </svg>
+                    )}
+                  </label>
+                </div>
               ) : null}
             </div>
           </div>

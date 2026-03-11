@@ -67,3 +67,33 @@ export async function apiFetch<T>(
   return (await res.json()) as T
 }
 
+/** Sube un archivo con multipart/form-data. No añade Content-Type (el navegador lo establece con boundary). */
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  opts: { authToken?: string | null } = {},
+): Promise<T> {
+  const form = new FormData()
+  form.append('file', file)
+  const headers = new Headers()
+  headers.set('Accept', 'application/json')
+  if (opts.authToken) headers.set('Authorization', `Bearer ${opts.authToken}`)
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: form,
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    let msg = ERROR_MENSAJE_ES
+    try {
+      const d = (await res.json()) as { detail?: string }
+      msg = typeof d?.detail === 'string' ? traducirMensaje(d.detail) : res.statusText
+    } catch {
+      msg = res.statusText
+    }
+    throw new Error(msg)
+  }
+  return (await res.json()) as T
+}
+

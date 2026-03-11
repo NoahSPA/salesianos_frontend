@@ -1,7 +1,7 @@
 import { ChevronDown, Key, LogOut, User } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
+import { API_BASE, apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { useTheme } from '../app/theme'
 import { Modal } from '../ui/Modal'
@@ -64,7 +64,11 @@ export function AppLayout() {
   const displayName = me?.player
     ? `${me.player.first_name} ${me.player.last_name}`.trim()
     : me?.username ?? ''
-  const avatarUrl = me?.player?.avatar_url?.trim() || null
+  const avatarUrl = me?.player
+    ? (me.player.avatar_file_id
+        ? `${API_BASE}/api/players/${me.player.id}/avatar`
+        : me.player.avatar_url?.trim() || null)
+    : null
 
   useEffect(() => {
     if (!userMenuOpen) return

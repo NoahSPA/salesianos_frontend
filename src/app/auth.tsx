@@ -8,6 +8,7 @@ export type MePlayer = {
   first_name: string
   last_name: string
   avatar_url?: string | null
+  avatar_file_id?: string | null
 }
 
 export type Me = {
