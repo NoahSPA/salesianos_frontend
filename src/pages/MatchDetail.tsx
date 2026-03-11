@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
 
@@ -16,7 +18,7 @@ type Match = {
   call_time: string
   venue: string
   field_number?: string | null
-  status: string
+  status: { code: string; label: string; color_hex: string }
   result?: string | null
   our_goals?: number | null
   opponent_goals?: number | null
@@ -29,6 +31,7 @@ type Player = {
   active: boolean
   primary_series_id: string
   series_ids: string[]
+  phone?: string | null
 }
 
 type Convocation = {
@@ -71,6 +74,16 @@ function copyText(text: string) {
   return Promise.resolve()
 }
 
+/** Normaliza teléfono para wa.me: solo dígitos; si es 9 dígitos empezando en 9 se asume Chile (+56). */
+function phoneForWhatsApp(phone: string | null | undefined): string | null {
+  if (!phone) return null
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length < 8) return null
+  if (digits.length === 9 && digits.startsWith('9')) return '56' + digits
+  if (digits.length >= 10) return digits
+  return digits
+}
+
 export function MatchDetailPage() {
   const { matchId } = useParams()
   const { accessToken, me } = useAuth()
@@ -84,6 +97,8 @@ export function MatchDetailPage() {
   const [ourGoalsEdit, setOurGoalsEdit] = useState<number | ''>('')
   const [opponentGoalsEdit, setOpponentGoalsEdit] = useState<number | ''>('')
   const [savingResult, setSavingResult] = useState(false)
+  const [resumenModalOpen, setResumenModalOpen] = useState(false)
+  const [recordatoriosModalOpen, setRecordatoriosModalOpen] = useState(false)
 
   const canManage = me?.role === 'admin' || me?.role === 'delegado'
 
@@ -157,6 +172,15 @@ export function MatchDetailPage() {
     return { confirmed, pending, declined }
   }, [allPlayersWithStatus])
 
+  const pendingConWhatsApp = useMemo(() => {
+    return groupedByStatus.pending.filter((p) => phoneForWhatsApp(p.phone))
+  }, [groupedByStatus.pending])
+
+  const mensajeRecordatorioPara = (firstName: string) => {
+    const saludo = `Hola, ${firstName}. ¿Puedes confirmar si vas al partido? Aquí van los datos:\n\n`
+    return saludo + whatsappText
+  }
+
   const whatsappText = useMemo(() => {
     if (!match || !status) return ''
     const confirmed = status.lines.filter((l) => l.status === 'confirmed').map((l) => `- ${l.player_name}`).join('\n')
@@ -164,16 +188,21 @@ export function MatchDetailPage() {
     const pending = status.lines.filter((l) => l.status === 'pending').map((l) => `- ${l.player_name}`).join('\n')
     const locationLine = [match.venue, match.field_number ? `cancha ${match.field_number}` : null].filter(Boolean).join(' · ')
     const shortLink = publicLink ?? ''
+    const d = new Date(match.match_date + 'T12:00:00')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yyyy = d.getFullYear()
+    const dayName = d.toLocaleDateString('es-CL', { weekday: 'long' })
+    const dayNameCap = dayName.charAt(0).toUpperCase() + dayName.slice(1)
+    const dateLine = `${dd}-${mm}-${yyyy} (${dayNameCap}) - Citación ${match.call_time}`
     return [
-      `Salesianos FC - Partido en puerta`,
-      ``,
-      `vs ${match.opponent}`,
-      `${match.match_date} - Citación ${match.call_time}`,
+      `Salesianos FC vs ${match.opponent}`,
+      dateLine,
       ...(locationLine ? [locationLine, ''] : []),
-      `Confirmá si vas (link corto):`,
+      `Link para confirmar:`,
       shortLink,
       ``,
-      `Van (${status.confirmed_count})`,
+      `Confirmados (${status.confirmed_count})`,
       confirmed || '(ninguno)',
       ``,
       `No pueden (${status.declined_count})`,
@@ -196,14 +225,25 @@ export function MatchDetailPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader title="Detalle del partido">
-        <Link to="/matches" className="sf-btn sf-btn-secondary">
-          Volver a partidos
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          {canManage ? (
+            <Link
+              to={`/matches?edit=${match.id}`}
+              className="sf-btn sf-btn-secondary inline-flex items-center gap-1.5"
+            >
+              <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              Editar partido
+            </Link>
+          ) : null}
+          <Link to="/matches" className="sf-btn sf-btn-secondary">
+            Volver a partidos
+          </Link>
+        </div>
       </PageHeader>
       {/* Cabecera del partido */}
-      <div className="sf-card overflow-hidden rounded-xl border border-slate-200 p-4 dark:border-slate-600">
+      <div className="sf-card overflow-hidden rounded-xl border border-slate-200 p-3 dark:border-slate-600">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             {series ? (
@@ -240,156 +280,310 @@ export function MatchDetailPage() {
               ) : null}
             </div>
           </div>
-          {conv ? (
-            <div className="flex flex-wrap gap-2">
-              <button className="sf-btn sf-btn-secondary px-3 py-2 text-sm" onClick={() => publicLink && copyText(publicLink)}>
-                Copiar link
-              </button>
-              <a className="sf-btn sf-btn-primary px-3 py-2 text-sm font-medium" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noreferrer">
-                WhatsApp
-              </a>
-              <button className="sf-btn sf-btn-secondary px-3 py-2 text-sm" onClick={() => copyText(whatsappText)}>
-                Copiar resumen
-              </button>
-            </div>
-          ) : null}
         </div>
       </div>
 
-      {error ? <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200">{error}</div> : null}
+      {error ? <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200">{error}</div> : null}
 
-      {/* Resultado del encuentro: solo para partidos con estado "jugado" */}
-      {canManage && match && match.status === 'jugado' ? (
-        <div className="sf-card rounded-xl border border-slate-200 p-4 dark:border-slate-600">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Resultado del encuentro</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Nuestros goles y goles del rival. Se mostrará Ganado, Empate o Perdido según el marcador.
-          </p>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="block text-sm text-slate-700 dark:text-slate-300">
-              Nuestros goles
-              <input
-                className="mt-1 sf-input w-20"
-                type="number"
-                min={0}
-                max={99}
-                value={ourGoalsEdit === '' ? '' : ourGoalsEdit}
-                onChange={(e) => setOurGoalsEdit(e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)}
-              />
-            </label>
-            <span className="mb-2 text-lg font-semibold text-slate-400 dark:text-slate-500">–</span>
-            <label className="block text-sm text-slate-700 dark:text-slate-300">
-              Goles rival
-              <input
-                className="mt-1 sf-input w-20"
-                type="number"
-                min={0}
-                max={99}
-                value={opponentGoalsEdit === '' ? '' : opponentGoalsEdit}
-                onChange={(e) => setOpponentGoalsEdit(e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)}
-              />
-            </label>
-            {ourGoalsEdit !== '' && opponentGoalsEdit !== '' ? (
-              <span className={'mb-2 sf-badge ' + (ourGoalsEdit > opponentGoalsEdit ? 'sf-badge-emerald' : ourGoalsEdit < opponentGoalsEdit ? 'sf-badge-rose' : 'sf-badge-amber')}>
-                {ourGoalsEdit > opponentGoalsEdit ? 'Ganado' : ourGoalsEdit < opponentGoalsEdit ? 'Perdido' : 'Empate'}
-              </span>
-            ) : null}
-            <button
-              className="sf-btn sf-btn-primary"
-              disabled={savingResult}
-              onClick={async () => {
-                if (!accessToken || !matchId) return
-                setSavingResult(true)
-                setError(null)
-                try {
-                  const our = ourGoalsEdit === '' ? null : Number(ourGoalsEdit)
-                  const opp = opponentGoalsEdit === '' ? null : Number(opponentGoalsEdit)
-                  const updated = await apiFetch<Match>(`/api/matches/${matchId}`, {
-                    method: 'PATCH',
-                    authToken: accessToken,
-                    body: JSON.stringify({
-                      our_goals: our,
-                      opponent_goals: opp,
-                      result: our != null && opp != null ? `${our}-${opp}` : null,
-                    }),
-                  })
-                  setMatch(updated)
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
-                } finally {
-                  setSavingResult(false)
-                }
-              }}
-            >
-              {savingResult ? 'Guardando…' : 'Guardar resultado'}
-            </button>
+      {/* Resultado y Convocatoria: en una fila solo cuando hay resultado (jugado); si no, solo convocatoria a ancho completo para no dejar hueco */}
+      {canManage && match?.status?.code === 'jugado' ? (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {/* Resultado del encuentro */}
+          <div className="sf-card rounded-xl border border-slate-200 p-3 dark:border-slate-600">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Resultado del encuentro</h2>
+            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+              Nuestros goles y goles del rival. Ganado, Empate o Perdido según el marcador.
+            </p>
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-600 dark:bg-slate-800/50">
+            <div className="grid grid-cols-4 gap-3 items-end">
+              <div className="flex flex-col gap-1 min-w-0">
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Nuestros goles</label>
+                <input
+                  className="sf-input h-11 w-full text-center text-lg font-semibold tabular-nums"
+                  type="number"
+                  min={0}
+                  max={99}
+                  value={ourGoalsEdit === '' ? '' : ourGoalsEdit}
+                  onChange={(e) => setOurGoalsEdit(e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)}
+                  aria-label="Nuestros goles"
+                />
+              </div>
+              <div className="flex flex-col justify-end items-center pb-2 min-w-0">
+                <span className="text-xl font-bold text-slate-400 dark:text-slate-500" aria-hidden="true">–</span>
+              </div>
+              <div className="flex flex-col gap-1 min-w-0">
+                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Goles rival</label>
+                <input
+                  className="sf-input h-11 w-full text-center text-lg font-semibold tabular-nums"
+                  type="number"
+                  min={0}
+                  max={99}
+                  value={opponentGoalsEdit === '' ? '' : opponentGoalsEdit}
+                  onChange={(e) => setOpponentGoalsEdit(e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)}
+                  aria-label="Goles rival"
+                />
+              </div>
+              <div className="flex flex-col justify-end items-center sm:items-start pb-2 min-w-0">
+                {ourGoalsEdit !== '' && opponentGoalsEdit !== '' ? (
+                  <span
+                    className={
+                      'rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap ' +
+                      (Number(ourGoalsEdit) > Number(opponentGoalsEdit)
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                        : Number(ourGoalsEdit) < Number(opponentGoalsEdit)
+                          ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200')
+                    }
+                  >
+                    {Number(ourGoalsEdit) > Number(opponentGoalsEdit) ? 'Ganado' : Number(ourGoalsEdit) < Number(opponentGoalsEdit) ? 'Perdido' : 'Empate'}
+                  </span>
+                ) : null}
+              </div>
+            </div>
           </div>
-        </div>
-      ) : null}
-
-      {/* Convocatoria: todos los jugadores están convocados, confirman si asisten */}
-      {canManage ? (
-        <div className="sf-card rounded-xl border border-slate-200 p-4 dark:border-slate-600">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Todos los jugadores de la serie están convocados. Crean o actualizan la convocatoria para generar el link y que confirmen si asisten.
-          </p>
           <button
             className="mt-3 sf-btn sf-btn-primary"
-            disabled={saving || players.length === 0}
+            disabled={savingResult}
             onClick={async () => {
               if (!accessToken || !matchId) return
-              setSaving(true)
+              setSavingResult(true)
               setError(null)
               try {
-                const allPlayerIds = players.map((p) => p.id)
-                const c = await apiFetch<Convocation>(`/api/matches/${matchId}/convocation`, {
-                  method: 'POST',
+                const our = ourGoalsEdit === '' ? null : Number(ourGoalsEdit)
+                const opp = opponentGoalsEdit === '' ? null : Number(opponentGoalsEdit)
+                const updated = await apiFetch<Match>(`/api/matches/${matchId}`, {
+                  method: 'PATCH',
                   authToken: accessToken,
-                  body: JSON.stringify({ invited_player_ids: allPlayerIds }),
+                  body: JSON.stringify({
+                    our_goals: our,
+                    opponent_goals: opp,
+                    result: our != null && opp != null ? `${our}-${opp}` : null,
+                  }),
                 })
-                setConv(c)
-                const st = await apiFetch<ConvStatus>(`/api/convocations/${c.id}/status`, { authToken: accessToken })
-                setStatus(st)
+                setMatch(updated)
               } catch (e: unknown) {
                 setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
               } finally {
-                setSaving(false)
+                setSavingResult(false)
               }
             }}
           >
-            {saving ? 'Guardando…' : conv ? 'Actualizar convocatoria' : 'Crear convocatoria'}
+            {savingResult ? 'Guardando…' : 'Guardar resultado'}
           </button>
+          </div>
+        {/* Convocatoria (misma caja, en la fila cuando partido jugado) */}
+          <div className="sf-card rounded-xl border border-slate-200 p-3 dark:border-slate-600">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Convocatoria</h2>
+            {match?.status?.code === 'jugado' ? (
+              <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+              Partido ya jugado. No se puede crear ni actualizar la convocatoria.
+            </p>
+            ) : (
+              <>
+                <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                  Crean o actualizan la convocatoria para generar el link y que confirmen asistencia.
+                </p>
+                <button
+                  className="mt-2 sf-btn sf-btn-primary"
+                disabled={saving || players.length === 0}
+                onClick={async () => {
+                  if (!accessToken || !matchId) return
+                  setSaving(true)
+                  setError(null)
+                  try {
+                    const allPlayerIds = players.map((p) => p.id)
+                    const c = await apiFetch<Convocation>(`/api/matches/${matchId}/convocation`, {
+                      method: 'POST',
+                      authToken: accessToken,
+                      body: JSON.stringify({ invited_player_ids: allPlayerIds }),
+                    })
+                    setConv(c)
+                    const st = await apiFetch<ConvStatus>(`/api/convocations/${c.id}/status`, { authToken: accessToken })
+                    setStatus(st)
+                  } catch (e: unknown) {
+                    setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
+                  } finally {
+                    setSaving(false)
+                  }
+                }}
+                >
+                  {saving ? 'Guardando…' : conv ? 'Actualizar convocatoria' : 'Crear convocatoria'}
+                </button>
+              </>
+            )}
+            {conv ? (
+              <>
+                <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-600">
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Link corto de confirmación</p>
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Comparte este link para que confirmen asistencia.</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <a
+                      href={publicLink ?? '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="min-w-0 flex-1 break-all rounded-md bg-slate-50 px-3 py-2 font-mono text-sm text-primary underline decoration-primary/60 hover:decoration-primary dark:bg-slate-800 dark:text-primary"
+                    >
+                      {publicLink}
+                    </a>
+                    <button type="button" className="sf-btn sf-btn-secondary shrink-0 text-sm" onClick={() => publicLink && copyText(publicLink)}>
+                      Copiar link
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <a className="sf-btn sf-btn-primary text-sm" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noreferrer">
+                    WhatsApp
+                  </a>
+                  <button type="button" className="sf-btn sf-btn-secondary text-sm" onClick={() => setResumenModalOpen(true)}>
+                    Ver resumen
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : canManage ? (
+        /* Solo Convocatoria a ancho completo (programado, suspendido, reprogramado): no hay hueco */
+        <div className="sf-card rounded-xl border border-slate-200 p-3 dark:border-slate-600">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Convocatoria</h2>
+          {match?.status?.code === 'jugado' ? (
+            <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+              Partido ya jugado. No se puede crear ni actualizar la convocatoria.
+            </p>
+          ) : (
+            <>
+              <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                Crean o actualizan la convocatoria para generar el link y que confirmen asistencia.
+              </p>
+              <button
+                className="mt-2 sf-btn sf-btn-primary"
+                disabled={saving || players.length === 0}
+                onClick={async () => {
+                  if (!accessToken || !matchId) return
+                  setSaving(true)
+                  setError(null)
+                  try {
+                    const allPlayerIds = players.map((p) => p.id)
+                    const c = await apiFetch<Convocation>(`/api/matches/${matchId}/convocation`, {
+                      method: 'POST',
+                      authToken: accessToken,
+                      body: JSON.stringify({ invited_player_ids: allPlayerIds }),
+                    })
+                    setConv(c)
+                    const st = await apiFetch<ConvStatus>(`/api/convocations/${c.id}/status`, { authToken: accessToken })
+                    setStatus(st)
+                  } catch (e: unknown) {
+                    setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
+                  } finally {
+                    setSaving(false)
+                  }
+                }}
+              >
+                {saving ? 'Guardando…' : conv ? 'Actualizar convocatoria' : 'Crear convocatoria'}
+              </button>
+            </>
+          )}
+          {conv ? (
+            <>
+              <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-600">
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Link corto de confirmación</p>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Comparte este link para que confirmen asistencia.</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <a
+                    href={publicLink ?? '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 flex-1 break-all rounded-md bg-slate-50 px-3 py-2 font-mono text-sm text-primary underline decoration-primary/60 hover:decoration-primary dark:bg-slate-800 dark:text-primary"
+                  >
+                    {publicLink}
+                  </a>
+                  <button type="button" className="sf-btn sf-btn-secondary shrink-0 text-sm" onClick={() => publicLink && copyText(publicLink)}>
+                    Copiar link
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <a className="sf-btn sf-btn-primary text-sm" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noreferrer">
+                  WhatsApp
+                </a>
+                <button type="button" className="sf-btn sf-btn-secondary text-sm" onClick={() => setResumenModalOpen(true)}>
+                  Ver resumen
+                </button>
+              </div>
+            </>
+          ) : null}
         </div>
       ) : null}
 
-      {/* Link corto de convocatoria */}
-      {conv ? (
-        <div className="sf-card rounded-xl border border-slate-200 p-4 dark:border-slate-600">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Link corto de confirmación</h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Compartí este link para que confirmen asistencia (copia o envialo por WhatsApp).</p>
-          <a
-            href={publicLink ?? '#'}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 block break-all rounded-md bg-slate-50 px-3 py-2 font-mono text-sm text-primary underline decoration-primary/60 hover:decoration-primary dark:bg-slate-800 dark:text-primary"
-          >
-            {publicLink}
-          </a>
-        </div>
-      ) : null}
+      <Modal
+        open={recordatoriosModalOpen}
+        title="Enviar recordatorio por WhatsApp"
+        onClose={() => setRecordatoriosModalOpen(false)}
+        footer={
+          <button type="button" className="sf-btn sf-btn-secondary" onClick={() => setRecordatoriosModalOpen(false)}>
+            Cerrar
+          </button>
+        }
+      >
+        <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
+          Cada enlace abre WhatsApp con un mensaje personalizado para ese jugador. Puedes enviar uno por uno.
+        </p>
+        <ul className="space-y-2">
+          {pendingConWhatsApp.map((p) => {
+            const waNumber = phoneForWhatsApp(p.phone)!
+            const text = mensajeRecordatorioPara(p.first_name)
+            const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`
+            return (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white py-2 pl-3 pr-2 dark:border-slate-600 dark:bg-slate-800/50">
+                <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {p.first_name} {p.last_name}
+                </span>
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="sf-btn sf-btn-primary text-sm"
+                >
+                  WhatsApp
+                </a>
+              </li>
+            )
+          })}
+        </ul>
+      </Modal>
+
+      <Modal
+        open={resumenModalOpen}
+        title="Resumen para compartir"
+        onClose={() => setResumenModalOpen(false)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button type="button" className="sf-btn sf-btn-secondary" onClick={() => setResumenModalOpen(false)}>
+              Cerrar
+            </button>
+            <button type="button" className="sf-btn sf-btn-primary" onClick={() => { copyText(whatsappText); setResumenModalOpen(false) }}>
+              Copiar resumen
+            </button>
+          </div>
+        }
+      >
+        <pre className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+          {whatsappText || 'Cargando…'}
+        </pre>
+      </Modal>
 
       {/* Lista de todos los jugadores con su estado de confirmación */}
-      <div className="sf-card rounded-xl border border-slate-200 p-4 dark:border-slate-600">
+      <div className="sf-card rounded-xl border border-slate-200 p-3 dark:border-slate-600">
         <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           Confirmaciones{series ? ` · ${series.name}` : ''}
         </h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Lista completa de jugadores de la serie. Indican si asisten o no.
+        <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+          Jugadores de la serie y si asisten o no.
         </p>
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-700 dark:bg-emerald-900/20">
-            <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">Asisten ({groupedByStatus.confirmed.length})</h3>
-            <ul className="mt-2 space-y-1.5">
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-700 dark:bg-emerald-900/20">
+            <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">Confirmados ({groupedByStatus.confirmed.length})</h3>
+            <ul className="mt-1.5 space-y-1">
               {groupedByStatus.confirmed.length === 0 ? (
                 <li className="text-sm text-slate-500 dark:text-slate-400">Ninguno</li>
               ) : (
@@ -401,9 +595,20 @@ export function MatchDetailPage() {
               )}
             </ul>
           </div>
-          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
-            <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-200">Pendientes ({groupedByStatus.pending.length})</h3>
-            <ul className="mt-2 space-y-1.5">
+          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-700 dark:bg-amber-900/20">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-200">Pendientes ({groupedByStatus.pending.length})</h3>
+              {pendingConWhatsApp.length > 0 ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                  onClick={() => setRecordatoriosModalOpen(true)}
+                >
+                  Enviar recordatorio por WhatsApp
+                </button>
+              ) : null}
+            </div>
+            <ul className="mt-1.5 space-y-1">
               {groupedByStatus.pending.length === 0 ? (
                 <li className="text-sm text-slate-500 dark:text-slate-400">Ninguno</li>
               ) : (
@@ -415,9 +620,9 @@ export function MatchDetailPage() {
               )}
             </ul>
           </div>
-          <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-4 dark:border-rose-700 dark:bg-rose-900/20">
+          <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-700 dark:bg-rose-900/20">
             <h3 className="text-sm font-semibold text-rose-800 dark:text-rose-200">No pueden ({groupedByStatus.declined.length})</h3>
-            <ul className="mt-2 space-y-1.5">
+            <ul className="mt-1.5 space-y-1">
               {groupedByStatus.declined.length === 0 ? (
                 <li className="text-sm text-slate-500 dark:text-slate-400">Ninguno</li>
               ) : (

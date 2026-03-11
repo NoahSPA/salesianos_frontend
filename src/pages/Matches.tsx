@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
@@ -12,6 +12,8 @@ type TournamentLocation = { name?: string | null; address?: string | null; map_u
 type Tournament = { id: string; name: string; season_year: number; active: boolean; location?: TournamentLocation | null }
 type Rival = { id: string; name: string; code?: string | null; series_ids: string[]; active: boolean }
 
+type MatchStatusRef = { code: string; label: string; color_hex: string }
+
 type Match = {
   id: string
   tournament_id: string
@@ -21,21 +23,21 @@ type Match = {
   call_time: string
   venue: string
   field_number?: string | null
-  status: 'programado' | 'borrador' | 'publicado' | 'jugado' | 'suspendido' | 'reprogramado'
+  status: MatchStatusRef
   notes?: string | null
   result?: string | null
   our_goals?: number | null
   opponent_goals?: number | null
 }
 
-const MATCH_STATUSES = ['programado', 'borrador', 'publicado', 'jugado', 'suspendido', 'reprogramado'] as const
-type MatchStatus = (typeof MATCH_STATUSES)[number]
-
 export function MatchesPage() {
   const { accessToken, me } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const editIdFromUrl = searchParams.get('edit')
   const [series, setSeries] = useState<Series[]>([])
   const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [rivals, setRivals] = useState<Rival[]>([])
+  const [matchStatuses, setMatchStatuses] = useState<MatchStatusRef[]>([])
   const [items, setItems] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +53,7 @@ export function MatchesPage() {
   const [matchDate, setMatchDate] = useState('')
   const [callTime, setCallTime] = useState('10:00')
   const [fieldNumber, setFieldNumber] = useState('')
-  const [statusVal, setStatusVal] = useState<MatchStatus>('programado')
+  const [statusVal, setStatusVal] = useState<string>('programado')
   const [ourGoals, setOurGoals] = useState<number | ''>('')
   const [opponentGoals, setOpponentGoals] = useState<number | ''>('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({})
@@ -81,7 +83,7 @@ export function MatchesPage() {
     setMatchDate(m.match_date)
     setCallTime(m.call_time)
     setFieldNumber(m.field_number ?? '')
-    setStatusVal(m.status)
+    setStatusVal(m.status.code)
     setOurGoals(m.our_goals ?? '')
     setOpponentGoals(m.opponent_goals ?? '')
     setOpen(true)
@@ -96,16 +98,18 @@ export function MatchesPage() {
 
   async function reload() {
     if (!accessToken) return
-    const [ms, ss, ts, rv] = await Promise.all([
+    const [ms, ss, ts, rv, statuses] = await Promise.all([
       apiFetch<Match[]>('/api/matches', { authToken: accessToken }),
       apiFetch<Series[]>('/api/series', { authToken: accessToken }),
       apiFetch<Tournament[]>('/api/tournaments', { authToken: accessToken }),
       apiFetch<Rival[]>('/api/rivals', { authToken: accessToken }),
+      apiFetch<MatchStatusRef[]>('/api/match-statuses', { authToken: accessToken }),
     ])
     setItems(ms)
     setSeries(ss)
     setTournaments(ts)
     setRivals(rv)
+    setMatchStatuses(statuses)
   }
 
   useEffect(() => {
@@ -117,24 +121,36 @@ export function MatchesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken])
 
-  const statusLabels: Record<Match['status'], string> = {
-    programado: 'Programado',
-    borrador: 'Borrador',
-    publicado: 'Publicado',
-    jugado: 'Jugado',
-    suspendido: 'Suspendido',
-    reprogramado: 'Reprogramado',
-  }
-  function statusBadge(s: Match['status']) {
-    const map: Record<string, string> = {
-      programado: 'sf-badge-blue',
-      borrador: 'sf-badge-slate',
-      publicado: 'sf-badge-indigo',
-      jugado: 'sf-badge-emerald',
-      suspendido: 'sf-badge-amber',
-      reprogramado: 'sf-badge-violet',
+  // Abrir modal de edición si la URL trae ?edit=<matchId> (p. ej. desde detalle del partido)
+  useEffect(() => {
+    if (!editIdFromUrl || !canCreate || loading || items.length === 0) return
+    const m = items.find((x) => x.id === editIdFromUrl)
+    if (m) {
+      openEdit(m)
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('edit')
+        return next
+      }, { replace: true })
     }
-    return <span className={'sf-badge ' + (map[s] ?? 'sf-badge-slate')}>{statusLabels[s] ?? s}</span>
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editIdFromUrl, canCreate, loading, items])
+
+  function statusBadge(s: MatchStatusRef) {
+    return (
+      <span
+        className="sf-badge"
+        style={{
+          backgroundColor: s.color_hex + '20',
+          color: s.color_hex,
+          borderColor: s.color_hex + '40',
+          borderWidth: 1,
+          borderStyle: 'solid',
+        }}
+      >
+        {s.label}
+      </span>
+    )
   }
 
   return (
@@ -350,35 +366,70 @@ export function MatchesPage() {
             <select
               className="mt-1 sf-input"
               value={statusVal}
-              onChange={(e) => {
-                const v = e.target.value
-                if ((MATCH_STATUSES as readonly string[]).includes(v)) setStatusVal(v as MatchStatus)
-              }}
+              onChange={(e) => setStatusVal(e.target.value)}
             >
-              <option value="programado">programado</option>
-              <option value="borrador">borrador</option>
-              <option value="publicado">publicado</option>
-              <option value="reprogramado">reprogramado</option>
-              <option value="suspendido">suspendido</option>
-              <option value="jugado">jugado</option>
+              {matchStatuses.length === 0 ? (
+                <option value={statusVal}>{statusVal}</option>
+              ) : (
+                matchStatuses.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.label}
+                  </option>
+                ))
+              )}
+              {matchStatuses.length > 0 && statusVal && !matchStatuses.some((s) => s.code === statusVal) ? (
+                <option value={statusVal}>{statusVal}</option>
+              ) : null}
             </select>
           </label>
-          {editingMatch && statusVal === 'jugado' ? (
-            <div className="flex flex-wrap items-end gap-3 sm:col-span-2">
-              <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Nuestros goles
-                <input className="mt-1 sf-input w-20" type="number" min={0} max={99} value={ourGoals === '' ? '' : ourGoals} onChange={(e) => setOurGoals(e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)} />
-              </label>
-              <span className="mb-2 text-lg font-semibold text-slate-400 dark:text-slate-500">–</span>
-              <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Goles rival
-                <input className="mt-1 sf-input w-20" type="number" min={0} max={99} value={opponentGoals === '' ? '' : opponentGoals} onChange={(e) => setOpponentGoals(e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)} />
-              </label>
-              {ourGoals !== '' && opponentGoals !== '' ? (
-                <span className={'mb-2 sf-badge ' + (ourGoals > opponentGoals ? 'sf-badge-emerald' : ourGoals < opponentGoals ? 'sf-badge-rose' : 'sf-badge-amber')}>
-                  {ourGoals > opponentGoals ? 'Ganado' : ourGoals < opponentGoals ? 'Perdido' : 'Empate'}
-                </span>
-              ) : null}
+          {statusVal === 'jugado' ? (
+            <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-600 dark:bg-slate-800/50">
+              <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">Marcador</p>
+              <div className="grid grid-cols-4 gap-3 items-end">
+                <div className="flex flex-col gap-1 min-w-0">
+                  <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Nuestros goles</label>
+                  <input
+                    className="sf-input h-11 w-full text-center text-lg font-semibold tabular-nums"
+                    type="number"
+                    min={0}
+                    max={99}
+                    value={ourGoals === '' ? '' : ourGoals}
+                    onChange={(e) => setOurGoals(e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)}
+                    aria-label="Nuestros goles"
+                  />
+                </div>
+                <div className="flex flex-col justify-end items-center pb-2 min-w-0">
+                  <span className="text-xl font-bold text-slate-400 dark:text-slate-500" aria-hidden="true">–</span>
+                </div>
+                <div className="flex flex-col gap-1 min-w-0">
+                  <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Goles rival</label>
+                  <input
+                    className="sf-input h-11 w-full text-center text-lg font-semibold tabular-nums"
+                    type="number"
+                    min={0}
+                    max={99}
+                    value={opponentGoals === '' ? '' : opponentGoals}
+                    onChange={(e) => setOpponentGoals(e.target.value === '' ? '' : parseInt(e.target.value, 10) || 0)}
+                    aria-label="Goles rival"
+                  />
+                </div>
+                <div className="flex flex-col justify-end items-center sm:items-start pb-2 min-w-0">
+                  {ourGoals !== '' && opponentGoals !== '' ? (
+                    <span
+                      className={
+                        'rounded-full px-3 py-1.5 text-sm font-medium whitespace-nowrap ' +
+                        (ourGoals > opponentGoals
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                          : ourGoals < opponentGoals
+                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200')
+                      }
+                    >
+                      {ourGoals > opponentGoals ? 'Ganado' : ourGoals < opponentGoals ? 'Perdido' : 'Empate'}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -444,19 +495,15 @@ export function MatchesPage() {
                   <div className="flex shrink-0 items-center gap-1">
                     {statusBadge(m.status)}
                     {canCreate ? (
-                      <button
-                        type="button"
+                      <Link
+                        to={`/matches?edit=${m.id}`}
                         className="rounded p-1.5 text-slate-400 opacity-0 transition-opacity hover:bg-slate-200 hover:text-slate-700 group-hover:opacity-100 dark:hover:bg-slate-600 dark:hover:text-slate-300"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          openEdit(m)
-                        }}
+                        onClick={(e) => e.stopPropagation()}
                         title="Editar partido"
                         aria-label="Editar partido"
                       >
                         <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
-                      </button>
+                      </Link>
                     ) : null}
                   </div>
                 </div>

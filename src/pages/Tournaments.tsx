@@ -36,7 +36,7 @@ type Match = {
   series_id: string
   opponent: string
   match_date: string
-  status: string
+  status: { code: string; label: string; color_hex: string }
   our_goals?: number | null
   opponent_goals?: number | null
 }
@@ -712,7 +712,7 @@ export function TournamentsPage() {
                             </div>
                             <ul className="space-y-1">
                               {list.map((m) => {
-                                const hasScore = m.status === 'jugado' && m.our_goals != null && m.opponent_goals != null
+                                const hasScore = m.status?.code === 'jugado' && m.our_goals != null && m.opponent_goals != null
                                 const scoreColor =
                                   !hasScore
                                     ? 'text-slate-600 dark:text-slate-400'
@@ -724,14 +724,6 @@ export function TournamentsPage() {
                                 const dateLabel = m.match_date
                                   ? new Date(m.match_date + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
                                   : ''
-                                const statusLabel: Record<string, string> = {
-                                  programado: 'Programado',
-                                  borrador: 'Borrador',
-                                  publicado: 'Publicado',
-                                  jugado: 'Jugado',
-                                  suspendido: 'Suspendido',
-                                  reprogramado: 'Reprogramado',
-                                }
                                 return (
                                   <li key={m.id}>
                                     <Link
@@ -746,7 +738,7 @@ export function TournamentsPage() {
                                       ) : (
                                         <span className="text-slate-500 dark:text-slate-400">
                                           {dateLabel}
-                                          {statusLabel[m.status] ? ` · ${statusLabel[m.status]}` : ''}
+                                          {m.status?.label ? ` · ${m.status.label}` : ''}
                                         </span>
                                       )}
                                     </Link>

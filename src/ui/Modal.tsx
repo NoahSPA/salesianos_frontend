@@ -37,9 +37,6 @@ export function Modal(props: {
           <div className="sf-card overflow-hidden rounded-t-2xl sm:rounded-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
               <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{props.title}</div>
-              <button className="sf-btn sf-btn-secondary px-2 py-1" onClick={props.onClose}>
-                Cerrar
-              </button>
             </div>
             <div className="max-h-[75dvh] overflow-auto p-4">{props.children}</div>
             {props.footer ? (
