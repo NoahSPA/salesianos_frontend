@@ -93,7 +93,7 @@ export function AppLayout() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="hidden rounded-lg p-2 text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 md:block"
+              className="rounded-lg p-2 text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
               aria-label={theme === 'dark' ? 'Usar tema claro' : 'Usar tema oscuro'}
             >
               {theme === 'dark' ? <IconSun /> : <IconMoon />}
