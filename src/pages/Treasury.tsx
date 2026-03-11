@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Clock, Grid, LayoutDashboard, Pencil, Scale, Trash2, Users } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { Modal } from '../ui/Modal'
@@ -346,12 +346,12 @@ export function TreasuryPage() {
     return r.scope_id ?? '-'
   }
 
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'dashboard', label: 'Resumen' },
-    { id: 'pending', label: 'Pendientes' },
-    { id: 'status', label: 'Estados' },
-    { id: 'matrix', label: 'Períodos' },
-    { id: 'rules', label: 'Reglas' },
+  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
+    { id: 'dashboard', label: 'Resumen', icon: <LayoutDashboard className="h-5 w-5" /> },
+    { id: 'pending', label: 'Pendientes', icon: <Clock className="h-5 w-5" /> },
+    { id: 'status', label: 'Estados', icon: <Users className="h-5 w-5" /> },
+    { id: 'matrix', label: 'Períodos', icon: <Grid className="h-5 w-5" /> },
+    { id: 'rules', label: 'Reglas', icon: <Scale className="h-5 w-5" /> },
   ]
 
   return (
@@ -360,23 +360,27 @@ export function TreasuryPage() {
         title="Tesorería"
         extra={
           <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 dark:border-slate-600 dark:bg-slate-800/50">
-            <div className="flex gap-2 overflow-x-auto">
+            <div className="grid grid-cols-5 gap-1 sm:flex sm:flex-wrap sm:gap-2">
               {tabs.map((t) => (
                 <button
                   key={t.id}
-                  className={'rounded-full px-3 py-1.5 text-sm transition-colors ' + (tab === t.id ? 'bg-slate-900 text-white dark:bg-primary' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700')}
+                  className={'flex flex-col items-center justify-center gap-0.5 rounded-lg p-2.5 text-sm font-medium transition-colors touch-manipulation sm:flex-row sm:gap-1.5 sm:px-3 ' + (tab === t.id ? 'bg-slate-900 text-white dark:bg-primary' : 'text-slate-700 hover:bg-slate-100 active:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-700 dark:active:bg-slate-600')}
                   onClick={() => setTab(t.id)}
+                  title={t.label}
+                  aria-label={t.label}
                 >
-                  {t.label}
+                  {t.icon}
+                  <span className="hidden sm:inline">{t.label}</span>
                 </button>
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3 dark:border-slate-600">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Series</label>
+              <label className="w-full text-sm font-medium text-slate-700 dark:text-slate-300 sm:w-auto">Series</label>
               <select
-                className="sf-input w-auto min-w-[180px] py-1.5 text-sm"
+                className="sf-input w-full min-w-0 py-2 text-sm sm:w-auto sm:min-w-[180px] sm:py-1.5"
                 value={seriesId}
                 onChange={(e) => setSeriesId(e.target.value)}
+                aria-label="Filtrar por serie"
               >
                 <option value="">Todas las series</option>
                 {series.filter((s) => s.active).map((s) => (
