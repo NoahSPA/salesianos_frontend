@@ -1,11 +1,15 @@
 # =============================================================================
 # Salesianos FC - Frontend | Nixpacks (Dokploy / Railway / etc.)
 # =============================================================================
-# Build: npm ci + npm run build (Vite/React/Tailwind).
+# Build: npm ci + npm run build (Vite/React/Tailwind). Requiere Node 20+.
 # Runtime: sirve la carpeta dist con serve en el puerto 8080.
 # Variables de build Vite (VITE_API_BASE, VITE_MAPBOX_TOKEN): configurarlas
 # en el panel de Dokploy como variables de entorno para que estén en el build.
 # =============================================================================
+
+# Node 20 (Vite 7, Tailwind v4, react-router 7 requieren >=20)
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-10_x"]
 
 [phases.install]
 cmds = ["npm ci"]
