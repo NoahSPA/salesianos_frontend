@@ -18,7 +18,7 @@ import { TreasuryPage } from '../pages/Treasury'
 function RequireAuth(props: { children: React.ReactNode }) {
   const { me, ready } = useAuth()
   if (!ready) return (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 bg-slate-50 dark:bg-slate-900">
+    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 bg-slate-50 dark:bg-slate-900">
       <div className="sf-loading-spinner" role="status" aria-label="Cargando" />
     </div>
   )

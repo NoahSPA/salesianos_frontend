@@ -1,4 +1,4 @@
-import { ChevronDown, Key, LogOut, User } from 'lucide-react'
+import { CalendarDays, ChevronDown, Home, Key, Layers, LogOut, PiggyBank, Swords, Trophy, User, Users } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { API_BASE, apiFetch, ERROR_MENSAJE_ES } from '../app/api'
@@ -86,14 +86,14 @@ export function AppLayout() {
       <header className="fixed top-0 left-0 right-0 z-30 h-14 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur transition-colors duration-300 dark:border-slate-700 dark:bg-slate-900/90 dark:shadow-none">
         <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight text-slate-900 transition-colors duration-300 dark:text-slate-100">
-            <img src="/logo.png" alt="Salesianos F.C." className="h-10 w-auto object-contain" />
+            <img src="/logo.png" alt="Salesianos F.C." className="h-9 w-auto object-contain md:h-10" />
             <span>Salesianos FC</span>
           </Link>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={toggleTheme}
-              className="rounded-lg p-2 text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+              className="hidden rounded-lg p-2 text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 md:block"
               aria-label={theme === 'dark' ? 'Usar tema claro' : 'Usar tema oscuro'}
             >
               {theme === 'dark' ? <IconSun /> : <IconMoon />}
@@ -102,26 +102,26 @@ export function AppLayout() {
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setUserMenuOpen((v) => !v) }}
-                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 py-1.5 pl-1.5 pr-2.5 transition-colors duration-200 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:hover:border-slate-500 sm:pl-2 sm:pr-3"
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-1.5 transition-colors duration-200 hover:bg-slate-100 hover:border-slate-300 dark:border-slate-600 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:hover:border-slate-500 md:py-1.5 md:pl-2 md:pr-3"
                 aria-expanded={userMenuOpen}
                 aria-haspopup="true"
                 aria-label="Menú de usuario"
               >
                 {avatarUrl ? (
                   <img
-                    src={avatarUrl}
+                    src={avatarUrl + (me?.player?.avatar_file_id ? `?v=${encodeURIComponent(me.player.avatar_file_id)}` : '')}
                     alt=""
-                    className="h-8 w-8 shrink-0 rounded-full object-cover"
+                    className="h-9 w-9 shrink-0 rounded-full object-cover md:h-8 md:w-8"
                     onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden') }}
                   />
                 ) : null}
-                <span className={`h-8 w-8 shrink-0 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
-                  <User className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                <span className={`h-9 w-9 shrink-0 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center md:h-8 md:w-8 ${avatarUrl ? 'hidden' : ''}`}>
+                  <User className="h-5 w-5 text-slate-500 dark:text-slate-400 md:h-4 md:w-4" />
                 </span>
-                <span className="max-w-[120px] truncate text-left text-sm font-medium text-slate-800 dark:text-slate-200 sm:max-w-[160px]">
+                <span className="hidden max-w-[120px] truncate text-left text-sm font-medium text-slate-800 dark:text-slate-200 sm:max-w-[160px] md:inline">
                   {displayName || 'Usuario'}
                 </span>
-                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400 ${userMenuOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`hidden h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400 md:block ${userMenuOpen ? 'rotate-180' : ''}`} />
               </button>
               {userMenuOpen ? (
                 <div
@@ -283,86 +283,92 @@ export function AppLayout() {
       </aside>
 
       {/* Body: área principal con scroll */}
-      <main className="min-h-0 flex-1 overflow-y-auto pt-14 pb-28 md:pl-[260px] md:pb-12">
+      <main className="min-h-0 flex-1 overflow-y-auto pt-14 pb-16 md:pl-[260px] md:pb-12">
         <div className="mx-auto max-w-7xl px-4 py-4 md:py-6">
           <Outlet />
         </div>
       </main>
 
-      {/* Footer siempre visible */}
-      <footer className="fixed bottom-0 left-0 right-0 z-20 flex h-12 items-center justify-center border-t border-slate-200 bg-white/95 text-center text-sm text-slate-500 backdrop-blur transition-colors duration-300 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-400 md:left-0">
+      {/* Footer: oculto en móvil */}
+      <footer className="fixed bottom-0 left-0 right-0 z-20 hidden h-12 items-center justify-center border-t border-slate-200 bg-white/95 text-center text-sm text-slate-500 backdrop-blur transition-colors duration-300 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-400 md:flex">
         <span>Salesianos FC © {new Date().getFullYear()}</span>
       </footer>
 
-      {/* Bottom nav (mobile): encima del footer */}
-      <nav className="fixed bottom-12 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur transition-colors duration-300 dark:border-slate-700 dark:bg-slate-900/95 md:hidden">
-        <div className="mx-auto grid max-w-7xl grid-cols-6 gap-1 px-2 py-2">
+      {/* Bottom nav (mobile): iconos solos, sin footer debajo */}
+      <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur transition-colors duration-300 dark:border-slate-700 dark:bg-slate-900/95 md:hidden">
+        <div className="mx-auto grid max-w-7xl grid-cols-6 gap-0 px-1 py-2">
           <NavLink
             to="/"
             end
             className={({ isActive }) =>
               classNames(
-                'rounded-md px-2 py-2 text-center text-xs transition-colors duration-300',
+                'flex flex-col items-center justify-center gap-0.5 rounded-md px-2 py-2 transition-colors duration-300',
                 isActive ? 'bg-primary text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700',
               )
             }
+            aria-label="Inicio"
           >
-            Inicio
+            <Home className="h-6 w-6 shrink-0" />
           </NavLink>
           <NavLink
             to="/matches"
             className={({ isActive }) =>
               classNames(
-                'rounded-md px-2 py-2 text-center text-xs transition-colors duration-300',
+                'flex flex-col items-center justify-center gap-0.5 rounded-md px-2 py-2 transition-colors duration-300',
                 isActive ? 'bg-primary text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700',
               )
             }
+            aria-label="Partidos"
           >
-            Partidos
+            <CalendarDays className="h-6 w-6 shrink-0" />
           </NavLink>
           <NavLink
             to="/players"
             className={({ isActive }) =>
               classNames(
-                'rounded-md px-2 py-2 text-center text-xs transition-colors duration-300',
+                'flex flex-col items-center justify-center gap-0.5 rounded-md px-2 py-2 transition-colors duration-300',
                 isActive ? 'bg-primary text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700',
               )
             }
+            aria-label="Jugadores"
           >
-            Jugadores
+            <Users className="h-6 w-6 shrink-0" />
           </NavLink>
           <NavLink
             to="/series"
             className={({ isActive }) =>
               classNames(
-                'rounded-md px-2 py-2 text-center text-xs transition-colors duration-300',
+                'flex flex-col items-center justify-center gap-0.5 rounded-md px-2 py-2 transition-colors duration-300',
                 isActive ? 'bg-primary text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700',
               )
             }
+            aria-label="Series"
           >
-            Series
+            <Layers className="h-6 w-6 shrink-0" />
           </NavLink>
           <NavLink
             to="/rivals"
             className={({ isActive }) =>
               classNames(
-                'rounded-md px-2 py-2 text-center text-xs transition-colors duration-300',
+                'flex flex-col items-center justify-center gap-0.5 rounded-md px-2 py-2 transition-colors duration-300',
                 isActive ? 'bg-primary text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700',
               )
             }
+            aria-label="Rivales"
           >
-            Riv.
+            <Swords className="h-6 w-6 shrink-0" />
           </NavLink>
           <NavLink
             to={isTreasurer ? '/treasury' : '/tournaments'}
             className={({ isActive }) =>
               classNames(
-                'rounded-md px-2 py-2 text-center text-xs transition-colors duration-300',
+                'flex flex-col items-center justify-center gap-0.5 rounded-md px-2 py-2 transition-colors duration-300',
                 isActive ? 'bg-primary text-white' : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700',
               )
             }
+            aria-label={isTreasurer ? 'Tesorería' : 'Torneos'}
           >
-            {isTreasurer ? 'Tes.' : 'Torneos'}
+            {isTreasurer ? <PiggyBank className="h-6 w-6 shrink-0" /> : <Trophy className="h-6 w-6 shrink-0" />}
           </NavLink>
         </div>
       </nav>

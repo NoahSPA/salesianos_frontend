@@ -42,7 +42,7 @@ export function AdminAuditPage() {
       <PageHeader title="Auditoría" />
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-8">
+        <div className="flex min-h-[40vh] flex-col items-center justify-center">
           <div className="sf-loading-spinner" role="status" aria-label="Cargando" />
         </div>
       ) : null}

@@ -5,6 +5,13 @@ declare module 'lucide-react' {
   export const Key: (props: SVGProps<SVGSVGElement>) => JSX.Element
   export const UserPlus: (props: SVGProps<SVGSVGElement>) => JSX.Element
   export const User: (props: SVGProps<SVGSVGElement>) => JSX.Element
+  export const Users: (props: SVGProps<SVGSVGElement>) => JSX.Element
   export const LogOut: (props: SVGProps<SVGSVGElement>) => JSX.Element
   export const ChevronDown: (props: SVGProps<SVGSVGElement>) => JSX.Element
+  export const CalendarDays: (props: SVGProps<SVGSVGElement>) => JSX.Element
+  export const Home: (props: SVGProps<SVGSVGElement>) => JSX.Element
+  export const Layers: (props: SVGProps<SVGSVGElement>) => JSX.Element
+  export const PiggyBank: (props: SVGProps<SVGSVGElement>) => JSX.Element
+  export const Swords: (props: SVGProps<SVGSVGElement>) => JSX.Element
+  export const Trophy: (props: SVGProps<SVGSVGElement>) => JSX.Element
 }

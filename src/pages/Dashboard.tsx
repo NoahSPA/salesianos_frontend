@@ -257,8 +257,8 @@ export function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
-        <div className="sf-loading-spinner h-10 w-10" role="status" aria-label="Cargando dashboard" />
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4">
+        <div className="sf-loading-spinner" role="status" aria-label="Cargando dashboard" />
         <p className="text-sm text-slate-500 dark:text-slate-400">Cargando información del equipo…</p>
       </div>
     )
