@@ -58,7 +58,7 @@ type PeriodSummary = {
   players_paid: number
 }
 
-type CollectionBySeries = { series_id: string; series_name: string; total_collected: number }
+type CollectionBySeries = { series_id: string; series_name: string; total_collected: number; total_pending?: number }
 type CollectionByTournament = {
   tournament_id: string
   tournament_name: string
@@ -517,7 +517,12 @@ export function TreasuryPage() {
                         {collectionBySeries.map((r) => (
                           <tr key={r.series_id} className="border-b border-slate-100 dark:border-slate-700">
                             <td className="px-3 py-1.5 font-medium text-slate-800 dark:text-slate-200">{r.series_name}</td>
-                            <td className="px-3 py-1.5 text-right text-emerald-700 dark:text-emerald-300">{clp(r.total_collected)}</td>
+                            <td className="px-3 py-1.5 text-right">
+                              <span className="text-emerald-700 dark:text-emerald-300">{clp(r.total_collected)}</span>
+                              {(r.total_pending ?? 0) > 0 && (
+                                <span className="ml-1.5 block text-xs text-amber-700 dark:text-amber-300">Pend: {clp(r.total_pending!)}</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

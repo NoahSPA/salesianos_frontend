@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { useBranding } from '../app/branding'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
@@ -32,6 +33,7 @@ type Match = {
 
 export function MatchesPage() {
   const { accessToken, me } = useAuth()
+  const { appName } = useBranding()
   const [searchParams, setSearchParams] = useSearchParams()
   const editIdFromUrl = searchParams.get('edit')
   const [series, setSeries] = useState<Series[]>([])
@@ -508,11 +510,11 @@ export function MatchesPage() {
                   </div>
                 </div>
 
-                {/* Cuerpo: fixture Salesianos FC – resultado – rival (espacio equitativo) */}
+                {/* Cuerpo: fixture equipo – resultado – rival (espacio equitativo) */}
                 <div className="flex flex-1 flex-col px-4 py-4">
                   <div className="flex w-full items-center gap-3">
-                    <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-slate-700 dark:text-slate-300" title="Salesianos FC">
-                      Salesianos FC
+                    <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-slate-700 dark:text-slate-300" title={appName}>
+                      {appName}
                     </span>
                     {hasResult && our != null && opp != null ? (
                       <span

@@ -103,7 +103,7 @@ type FeeSummary = {
   periods: unknown[]
   total_collected: number
   total_pending: number
-  collection_by_series?: { series_id: string; series_name: string; total_collected: number }[]
+  collection_by_series?: { series_id: string; series_name: string; total_collected: number; total_pending?: number }[]
   collection_by_tournament?: unknown[]
   collection_by_player?: unknown[]
 }
@@ -387,15 +387,15 @@ export function DashboardPage() {
             </Link>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-4 sm:max-w-md">
-            <div className="rounded-xl bg-emerald-50 px-4 py-3 dark:bg-emerald-900/20">
+            <div className="rounded-xl bg-emerald-50 px-4 py-3 text-center dark:bg-emerald-900/20">
               <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Al día</p>
               <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{feeCounts.al_dia}</p>
             </div>
-            <div className="rounded-xl bg-amber-50 px-4 py-3 dark:bg-amber-900/20">
+            <div className="rounded-xl bg-amber-50 px-4 py-3 text-center dark:bg-amber-900/20">
               <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Pendiente</p>
               <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">{feeCounts.pendiente}</p>
             </div>
-            <div className="rounded-xl bg-rose-50 px-4 py-3 dark:bg-rose-900/20">
+            <div className="rounded-xl bg-rose-50 px-4 py-3 text-center dark:bg-rose-900/20">
               <p className="text-xs font-medium uppercase tracking-wide text-rose-700 dark:text-rose-300">Atrasado</p>
               <p className="text-2xl font-bold text-rose-900 dark:text-rose-100">{feeCounts.atrasado}</p>
             </div>
@@ -442,9 +442,14 @@ export function DashboardPage() {
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Recaudación por serie</h2>
               <ul className="mt-3 space-y-2">
                 {feeSummary.collection_by_series.slice(0, 5).map((row) => (
-                  <li key={row.series_id} className="flex items-center justify-between text-sm">
+                  <li key={row.series_id} className="flex items-center justify-between gap-2 text-sm">
                     <span className="text-slate-700 dark:text-slate-300">{row.series_name}</span>
-                    <span className="font-medium text-slate-900 dark:text-slate-100">{formatClp(row.total_collected)}</span>
+                    <span className="flex shrink-0 flex-col items-end gap-0.5">
+                      <span className="font-medium text-emerald-700 dark:text-emerald-300">{formatClp(row.total_collected)}</span>
+                      {(row.total_pending ?? 0) > 0 && (
+                        <span className="text-xs text-amber-700 dark:text-amber-300">Pendiente: {formatClp(row.total_pending!)}</span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -518,25 +523,30 @@ export function DashboardPage() {
               {seriesConvocations.map((c) => {
                 const m = c.match
                 const st = c.status
+                const serie = seriesById[c.series_id]
                 return (
                   <li key={c.series_id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-600">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-slate-900 dark:text-slate-100">{c.series_name}</p>
+                    <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <SeriesBadge seriesId={c.series_id} name={c.series_name || serie?.name} color={serie?.color} />
+                        </div>
                         {m ? (
-                          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                            Próximo: <Link to={`/matches/${m.id}`} className="font-medium text-primary hover:underline">vs {m.opponent}</Link>
-                            {' '}· {m.match_date} {m.call_time}
-                          </p>
+                          <>
+                            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                              Próximo: <Link to={`/matches/${m.id}`} className="font-medium text-primary hover:underline">vs {m.opponent}</Link>
+                            </p>
+                            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{formatMatchDate(m.match_date)} · {m.call_time}</p>
+                          </>
                         ) : (
                           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Sin partido próximo</p>
                         )}
                       </div>
                       {st && (
-                        <div className="flex flex-wrap justify-end gap-1">
-                          <span className="sf-badge sf-badge-emerald">{st.confirmed_count} ✓</span>
-                          <span className="sf-badge sf-badge-amber">{st.pending_count} ?</span>
-                          <span className="sf-badge sf-badge-rose">{st.declined_count} ✗</span>
+                        <div className="flex flex-shrink-0 flex-col items-end gap-1 sm:flex-row sm:justify-end">
+                          <span className="sf-badge sf-badge-emerald inline-flex min-w-[2.5rem] justify-center">{st.confirmed_count} ✓</span>
+                          <span className="sf-badge sf-badge-amber inline-flex min-w-[2.5rem] justify-center">{st.pending_count} ?</span>
+                          <span className="sf-badge sf-badge-rose inline-flex min-w-[2.5rem] justify-center">{st.declined_count} ✗</span>
                         </div>
                       )}
                     </div>

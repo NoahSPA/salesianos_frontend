@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { useBranding } from '../app/branding'
 import { useTheme } from '../app/theme'
 
 function IconMoon() {
@@ -44,6 +45,7 @@ export function LoginPage() {
   const nav = useNavigate()
   const { login } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { logoUrl, appName } = useBranding()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -68,7 +70,7 @@ export function LoginPage() {
         </button>
       </div>
     <div className="mx-auto flex max-w-sm flex-col items-center justify-center px-4 py-16 text-center">
-      <img src="/logo.png" alt="Salesianos F.C." className="mx-auto mb-6 h-40 w-auto max-w-[280px] object-contain sm:h-44" />
+      <img src={logoUrl} alt={appName} className="mx-auto mb-6 h-40 w-auto max-w-[280px] object-contain sm:h-44" />
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Ingresar</h1>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
         Accede para administrar el club

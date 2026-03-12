@@ -13,6 +13,7 @@ import { MatchDetailPage } from '../pages/MatchDetail'
 import { RivalsPage } from '../pages/Rivals'
 import { AdminUsersPage } from '../pages/AdminUsers'
 import { AdminAuditPage } from '../pages/AdminAudit'
+import { AdminBrandingPage } from '../pages/AdminBranding'
 import { TreasuryPage } from '../pages/Treasury'
 
 function RequireAuth(props: { children: React.ReactNode }) {
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
       { path: 'treasury', element: <TreasuryPage /> },
       { path: 'admin/users', element: <AdminUsersPage /> },
       { path: 'admin/audit', element: <AdminAuditPage /> },
+      { path: 'admin/branding', element: <AdminBrandingPage /> },
     ],
   },
 ])

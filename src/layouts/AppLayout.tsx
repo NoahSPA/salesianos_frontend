@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { API_BASE, apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { useBranding } from '../app/branding'
 import { useTheme } from '../app/theme'
 import { Modal } from '../ui/Modal'
 
@@ -46,6 +47,7 @@ function NavItem(props: { to: string; label: string; end?: boolean }) {
 export function AppLayout() {
   const { me, logout, accessToken } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { logoUrl, appName } = useBranding()
   const nav = useNavigate()
   const role = me?.role
   const isAdmin = role === 'admin'
@@ -86,8 +88,8 @@ export function AppLayout() {
       <header className="fixed top-0 left-0 right-0 z-30 h-14 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur transition-colors duration-300 dark:border-slate-700 dark:bg-slate-900/90 dark:shadow-none">
         <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight text-slate-900 transition-colors duration-300 dark:text-slate-100">
-            <img src="/logo.png" alt="Salesianos F.C." className="h-9 w-auto object-contain md:h-10" />
-            <span>Salesianos FC</span>
+            <img src={logoUrl} alt={appName} className="h-9 w-auto object-contain md:h-10" />
+            <span>{appName}</span>
           </Link>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <button
@@ -276,6 +278,7 @@ export function AppLayout() {
               <nav className="space-y-1">
                 <NavItem to="/admin/users" label="Usuarios" />
                 <NavItem to="/admin/audit" label="Auditoría" />
+                <NavItem to="/admin/branding" label="Personalizar" />
               </nav>
             </>
           ) : null}
@@ -291,7 +294,7 @@ export function AppLayout() {
 
       {/* Footer: oculto en móvil */}
       <footer className="fixed bottom-0 left-0 right-0 z-20 hidden h-12 items-center justify-center border-t border-slate-200 bg-white/95 text-center text-sm text-slate-500 backdrop-blur transition-colors duration-300 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-400 md:flex">
-        <span>Salesianos FC © {new Date().getFullYear()}</span>
+        <span>{appName} © {new Date().getFullYear()}</span>
       </footer>
 
       {/* Bottom nav (mobile): iconos solos, sin footer debajo */}

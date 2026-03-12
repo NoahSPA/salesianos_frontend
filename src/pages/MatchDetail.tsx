@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { useBranding } from '../app/branding'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
@@ -87,6 +88,7 @@ function phoneForWhatsApp(phone: string | null | undefined): string | null {
 export function MatchDetailPage() {
   const { matchId } = useParams()
   const { accessToken, me } = useAuth()
+  const { appName } = useBranding()
   const [match, setMatch] = useState<Match | null>(null)
   const [series, setSeries] = useState<Series | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -196,7 +198,7 @@ export function MatchDetailPage() {
     const dayNameCap = dayName.charAt(0).toUpperCase() + dayName.slice(1)
     const dateLine = `${dd}-${mm}-${yyyy} (${dayNameCap}) - Citación ${match.call_time}`
     return [
-      `Salesianos FC vs ${match.opponent}`,
+      `${appName} vs ${match.opponent}`,
       dateLine,
       ...(locationLine ? [locationLine, ''] : []),
       `Link para confirmar:`,
@@ -211,7 +213,7 @@ export function MatchDetailPage() {
       `Pendientes (${status.pending_count})`,
       pending || '(ninguno)',
     ].join('\n')
-  }, [match, status, publicLink])
+  }, [match, status, publicLink, appName])
 
   if (!match) {
     return (
