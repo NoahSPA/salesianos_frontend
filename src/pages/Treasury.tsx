@@ -140,6 +140,9 @@ export function TreasuryPage() {
   const [totalPending, setTotalPending] = useState<number>(0)
   const [dashboardLoading, setDashboardLoading] = useState(true)
   const [playerMatrix, setPlayerMatrix] = useState<PlayerPeriodMatrix | null>(null)
+  const [copiedPendingSummary, setCopiedPendingSummary] = useState(false)
+  const [pendingSummaryOpen, setPendingSummaryOpen] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'al_dia' | 'pendiente' | 'atrasado'>('todos')
 
   const [playerId, setPlayerId] = useState('')
   const [amount, setAmount] = useState(150000)
@@ -178,41 +181,18 @@ export function TreasuryPage() {
     if (!accessToken) return
     setDashboardLoading(true)
     try {
-      const [pays, ss, st, pl, rules, summary] = await Promise.all([
+      // Carga base: pendientes, series, jugadores y reglas.
+      // El resumen y los estados detallados se cargan en efectos específicos (reloadSummary / reloadStatus)
+      const [pays, ss, pl, rules] = await Promise.all([
         apiFetch<Payment[]>('/api/payments?status=pending_validation&limit=200', { authToken: accessToken }),
         apiFetch<Series[]>('/api/series', { authToken: accessToken }),
-        apiFetch<PlayerStatus[]>('/api/fees/status', { authToken: accessToken }),
         apiFetch<Player[]>('/api/players?active=true', { authToken: accessToken }),
         apiFetch<FeeRule[]>('/api/fees/rules', { authToken: accessToken }),
-        apiFetch<{
-          periods: PeriodSummary[]
-          total_collected: number
-          total_pending: number
-          collection_by_series?: CollectionBySeries[]
-          collection_by_tournament?: CollectionByTournament[]
-          collection_by_player?: CollectionByPlayer[]
-        }>(`/api/fees/summary-by-period${seriesId ? `?series_id=${encodeURIComponent(seriesId)}` : ''}`, { authToken: accessToken }),
       ])
       setPending(pays)
       setSeries(ss)
-      setFeeStatus(st)
       setPlayers(pl)
       setFeeRules(rules)
-      if (summary && typeof summary === 'object' && Array.isArray(summary.periods)) {
-        setPeriodSummary(summary.periods)
-        setTotalCollected(summary.total_collected ?? 0)
-        setTotalPending(summary.total_pending ?? 0)
-        setCollectionBySeries(Array.isArray(summary.collection_by_series) ? summary.collection_by_series : [])
-        setCollectionByTournament(Array.isArray(summary.collection_by_tournament) ? summary.collection_by_tournament : [])
-        setCollectionByPlayer(Array.isArray(summary.collection_by_player) ? summary.collection_by_player : [])
-      } else {
-        setPeriodSummary([])
-        setTotalCollected(0)
-        setTotalPending(0)
-        setCollectionBySeries([])
-        setCollectionByTournament([])
-        setCollectionByPlayer([])
-      }
     } finally {
       setDashboardLoading(false)
     }
@@ -336,6 +316,50 @@ export function TreasuryPage() {
   )
   const seriesById = useMemo(() => Object.fromEntries(series.map((s) => [s.id, s])), [series])
   const playersById = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
+  const statusByPlayerId = useMemo(
+    () => Object.fromEntries(feeStatus.map((s) => [s.player_id, s.status] as const)),
+    [feeStatus],
+  )
+
+  const matrixPlayersSorted = useMemo(
+    () =>
+      playerMatrix
+        ? [...playerMatrix.players].sort((a, b) => a.player_name.localeCompare(b.player_name, 'es', { sensitivity: 'base' }))
+        : null,
+    [playerMatrix],
+  )
+
+  const pendingSummaryRows = useMemo(
+    () => {
+      if (!playerMatrix) return []
+      const rows: { player_name: string; months: string[] }[] = []
+      const playersForSummary = [...playerMatrix.players].sort((a, b) =>
+        a.player_name.localeCompare(b.player_name, 'es', { sensitivity: 'base' }),
+      )
+      for (const p of playersForSummary) {
+        const pendingPeriods = playerMatrix.periods.filter((ym) => {
+          const cell = p.periods[ym]
+          return cell && cell.status === 'pendiente'
+        })
+        if (pendingPeriods.length === 0) continue
+        rows.push({
+          player_name: p.player_name,
+          months: pendingPeriods.map((ym) => formatYearMonth(ym)),
+        })
+      }
+      return rows
+    },
+    [playerMatrix],
+  )
+
+  const pendingSummaryText = useMemo(() => {
+    if (pendingSummaryRows.length === 0) return ''
+    const lines: string[] = ['Jugador - Meses pendientes']
+    for (const r of pendingSummaryRows) {
+      lines.push(`${r.player_name} - ${r.months.join(', ')}`)
+    }
+    return lines.join('\n')
+  }, [pendingSummaryRows])
 
   if (!canTreasury) return <div className="text-sm text-slate-600 dark:text-slate-400">Sin permiso.</div>
 
@@ -374,19 +398,39 @@ export function TreasuryPage() {
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3 dark:border-slate-600">
-              <label className="w-full text-sm font-medium text-slate-700 dark:text-slate-300 sm:w-auto">Series</label>
-              <select
-                className="sf-input w-full min-w-0 py-2 text-sm sm:w-auto sm:min-w-[180px] sm:py-1.5"
-                value={seriesId}
-                onChange={(e) => setSeriesId(e.target.value)}
-                aria-label="Filtrar por serie"
-              >
-                <option value="">Todas las series</option>
-                {series.filter((s) => s.active).map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+            <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3 dark:border-slate-600">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Series</label>
+                <select
+                  className="sf-input w-full min-w-0 py-2 text-sm sm:w-auto sm:min-w-[180px] sm:py-1.5"
+                  value={seriesId}
+                  onChange={(e) => setSeriesId(e.target.value)}
+                  aria-label="Filtrar por serie"
+                >
+                  <option value="">Todas las series</option>
+                  {series.filter((s) => s.active).map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="ml-auto flex flex-wrap items-center gap-1">
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Estado</span>
+                {(['todos', 'al_dia', 'pendiente', 'atrasado'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={
+                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors ' +
+                      (statusFilter === s
+                        ? 'bg-slate-900 text-white dark:bg-primary'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700')
+                    }
+                    onClick={() => setStatusFilter(s)}
+                  >
+                    {s === 'todos' ? 'Todos' : STATUS_LABEL[s]}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
           </div>
         }
@@ -603,6 +647,78 @@ export function TreasuryPage() {
           )}
         </div>
       ) : null}
+
+      <Modal
+        open={pendingSummaryOpen}
+        title="Resumen de cuotas pendientes"
+        onClose={() => {
+          setPendingSummaryOpen(false)
+        }}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="sf-btn sf-btn-secondary"
+              onClick={() => setPendingSummaryOpen(false)}
+            >
+              Cerrar
+            </button>
+            {pendingSummaryRows.length > 0 ? (
+              <button
+                type="button"
+                className="sf-btn sf-btn-primary"
+                onClick={async () => {
+                  try {
+                    if ('clipboard' in navigator && pendingSummaryText) {
+                      await navigator.clipboard.writeText(pendingSummaryText)
+                      setCopiedPendingSummary(true)
+                      window.setTimeout(() => setCopiedPendingSummary(false), 1500)
+                    }
+                  } catch {
+                    // ignore
+                  }
+                }}
+              >
+                {copiedPendingSummary ? 'Copiado' : 'Copiar para pegar en grupo'}
+              </button>
+            ) : null}
+          </div>
+        }
+      >
+        {pendingSummaryRows.length === 0 ? (
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            No hay jugadores con cuotas pendientes en los períodos visibles.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Este resumen está pensado para copiar y pegar en tu grupo de WhatsApp u otro chat.
+            </p>
+            <div className="max-h-72 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/20">
+              <table className="w-full text-xs sm:text-[13px]">
+                <thead className="bg-slate-100 text-left text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  <tr>
+                    <th className="px-2 py-1 sm:px-3 sm:py-2">Jugador</th>
+                    <th className="px-2 py-1 sm:px-3 sm:py-2">Meses pendientes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingSummaryRows.map((r) => (
+                    <tr key={r.player_name} className="border-t border-slate-200 dark:border-slate-700">
+                      <td className="px-2 py-1 font-medium text-slate-800 dark:text-slate-100 sm:px-3 sm:py-1.5">
+                        {r.player_name}
+                      </td>
+                      <td className="px-2 py-1 text-slate-700 dark:text-slate-200 sm:px-3 sm:py-1.5">
+                        {r.months.join(', ')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {tab === 'pending' ? (
         <div className="space-y-2">
@@ -932,7 +1048,9 @@ export function TreasuryPage() {
               feeStatus.reduce<Record<string, PlayerStatus[]>>((acc, p) => {
                 const sid = p.series_id || '_sin_serie'
                 if (!acc[sid]) acc[sid] = []
-                acc[sid].push(p)
+                if (statusFilter === 'todos' || p.status === statusFilter) {
+                  acc[sid].push(p)
+                }
                 return acc
               }, {})
             )
@@ -1047,17 +1165,36 @@ export function TreasuryPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {playerMatrix.players.map((p) => (
+                    {(() => {
+                      const basePlayers = matrixPlayersSorted ?? playerMatrix.players
+                      const filteredPlayers =
+                        statusFilter === 'todos'
+                          ? basePlayers
+                          : basePlayers.filter((p) => statusByPlayerId[p.player_id] === statusFilter)
+                      return filteredPlayers
+                    })().map((p) => (
                       <tr key={p.player_id} className="group border-b border-slate-100 hover:bg-slate-50/50 dark:border-slate-700 dark:hover:bg-slate-700/30">
                         <td className="sticky left-0 z-10 min-w-[140px] bg-white px-3 py-2 font-medium group-hover:bg-slate-50/80 dark:bg-slate-800 dark:group-hover:bg-slate-700/50">{p.player_name}</td>
                         <td className="px-3 py-2 text-center text-slate-600 dark:text-slate-400">{seriesById[p.series_id]?.name ?? '—'}</td>
                         {playerMatrix.periods.map((ym) => {
                           const cell = p.periods[ym]
                           if (!cell) return <td key={ym} className="px-2 py-2 text-center text-slate-300 dark:text-slate-500">—</td>
+                          const isPaid = cell.status === 'pagado'
+                          const title = isPaid
+                            ? `Pagado: ${clp(cell.paid)}`
+                            : `Pendiente: ${clp(cell.amount - cell.paid)}`
                           return (
-                            <td key={ym} className="px-2 py-2 text-center" title={cell.status === 'pagado' ? `Pagado: ${clp(cell.paid)}` : `Pendiente: ${clp(cell.amount - cell.paid)}`}>
-                              <span className={cell.status === 'pagado' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
-                                {cell.status === 'pagado' ? '✓' : '○'}
+                            <td key={ym} className="px-2 py-2 text-center" title={title}>
+                              <span
+                                aria-label={isPaid ? 'Pagado' : 'Pendiente'}
+                                className={
+                                  'inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ' +
+                                  (isPaid
+                                    ? 'bg-emerald-500 text-white dark:bg-emerald-400'
+                                    : 'bg-amber-400 text-amber-400 dark:bg-amber-300 dark:text-amber-300')
+                                }
+                              >
+                                {isPaid ? '✓' : ''}
                               </span>
                             </td>
                           )
@@ -1067,8 +1204,29 @@ export function TreasuryPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                ✓ Pagado · ○ Pendiente
+              <div className="space-y-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Leyenda</span>
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-semibold text-white dark:bg-emerald-400">
+                      ✓
+                    </span>
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300">Pagado</span>
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-semibold text-white dark:bg-amber-300">
+                      •
+                    </span>
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300">Pendiente</span>
+                  </div>
+                  {pendingSummaryRows.length > 0 ? (
+                    <button
+                      type="button"
+                      className="sf-btn sf-btn-secondary sf-btn-xs"
+                      onClick={() => setPendingSummaryOpen(true)}
+                    >
+                      Ver resumen
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           )}

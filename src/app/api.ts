@@ -67,14 +67,38 @@ export async function apiFetch<T>(
   return (await res.json()) as T
 }
 
-/** Sube un archivo con multipart/form-data. No añade Content-Type (el navegador lo establece con boundary). */
+/** Descarga un archivo (blob) con autenticación y dispara la descarga en el navegador. */
+export async function apiDownloadBlob(
+  path: string,
+  filename: string,
+  authToken: string | null | undefined,
+): Promise<void> {
+  const headers = new Headers()
+  if (authToken) headers.set('Authorization', `Bearer ${authToken}`)
+  const res = await fetch(`${API_BASE}${path}`, { headers, credentials: 'include' })
+  if (!res.ok) throw new Error(ERROR_MENSAJE_ES)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** Sube un archivo con multipart/form-data. Opcionalmente añade más campos al form (ej. series_id). */
 export async function apiUpload<T>(
   path: string,
   file: File,
-  opts: { authToken?: string | null } = {},
+  opts: { authToken?: string | null; form?: Record<string, string> } = {},
 ): Promise<T> {
   const form = new FormData()
   form.append('file', file)
+  if (opts.form) {
+    for (const [key, value] of Object.entries(opts.form)) {
+      form.append(key, value)
+    }
+  }
   const headers = new Headers()
   headers.set('Accept', 'application/json')
   if (opts.authToken) headers.set('Authorization', `Bearer ${opts.authToken}`)

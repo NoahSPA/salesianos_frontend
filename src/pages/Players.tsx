@@ -14,10 +14,13 @@ type Series = { id: string; name: string; active: boolean; color?: string | null
 type Player = {
   id: string
   first_name: string
+  second_first_name?: string | null
   last_name: string
+  second_last_name?: string | null
   rut: string
   birth_date: string
   phone: string
+  email?: string | null
   primary_series_id: string
   series_ids: string[]
   positions: string[]
@@ -26,6 +29,37 @@ type Player = {
   notes?: string | null
   avatar_url?: string | null
   avatar_file_id?: string | null
+}
+
+type PlayerImportResult = {
+  inserted: number
+  updated: number
+  skipped: number
+  errors: Array< { line: number; error: string; row: Record<string, string> } >
+}
+
+/** Etiquetas en español para mostrar campo = valor en errores de importación */
+const IMPORT_FIELD_LABELS: Record<string, string> = {
+  rut: 'RUT',
+  first_name: 'Primer nombre',
+  second_first_name: 'Segundo nombre',
+  last_name: 'Primer apellido',
+  second_last_name: 'Segundo apellido',
+  birth_date: 'Fecha nacimiento',
+  phone: 'Celular',
+  email: 'Email',
+  position_primary: 'Posición principal',
+  position_secondary: 'Posición secundaria',
+  level: 'Nivel',
+  notes: 'Observaciones',
+}
+function formatRowAsFieldValue(row: Record<string, string>): Array<{ campo: string; valor: string }> {
+  return Object.entries(row)
+    .filter(([, v]) => v != null && String(v).trim() !== '')
+    .map(([key, valor]) => ({
+      campo: IMPORT_FIELD_LABELS[key] ?? key,
+      valor: String(valor).trim(),
+    }))
 }
 
 const PLAYER_POSITIONS: Array<{ code: Player['positions'][number]; label: string; group: string }> = [
@@ -108,10 +142,13 @@ export function PlayersPage() {
   const [open, setOpen] = useState(false)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
   const [firstName, setFirstName] = useState('')
+  const [secondFirstName, setSecondFirstName] = useState('')
   const [lastName, setLastName] = useState('')
+  const [secondLastName, setSecondLastName] = useState('')
   const [rut, setRut] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [primarySeriesId, setPrimarySeriesId] = useState('')
   const [primaryPosition, setPrimaryPosition] = useState('')
   const [secondaryPosition, setSecondaryPosition] = useState('')
@@ -121,6 +158,13 @@ export function PlayersPage() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({})
   const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  const [importExcelOpen, setImportExcelOpen] = useState(false)
+  const [importExcelSeriesId, setImportExcelSeriesId] = useState('')
+  const [importExcelFile, setImportExcelFile] = useState<File | null>(null)
+  const [importExcelUploading, setImportExcelUploading] = useState(false)
+  const [importExcelError, setImportExcelError] = useState<string | null>(null)
+  const [importExcelResult, setImportExcelResult] = useState<PlayerImportResult | null>(null)
 
   const canAdmin = me?.role === 'admin'
 
@@ -136,10 +180,13 @@ export function PlayersPage() {
     setEditingPlayer(null)
     setFieldErrors({})
     setFirstName('')
+    setSecondFirstName('')
     setLastName('')
+    setSecondLastName('')
     setRut('')
     setBirthDate('')
     setPhone('')
+    setEmail('')
     setPrimarySeriesId('')
     setPrimaryPosition('')
     setSecondaryPosition('')
@@ -153,10 +200,13 @@ export function PlayersPage() {
     setEditingPlayer(p)
     setFieldErrors({})
     setFirstName(p.first_name)
+    setSecondFirstName(p.second_first_name ?? '')
     setLastName(p.last_name)
+    setSecondLastName(p.second_last_name ?? '')
     setRut(formatRutDisplay(p.rut))
     setBirthDate(typeof p.birth_date === 'string' ? p.birth_date.slice(0, 10) : '')
     setPhone(p.phone)
+    setEmail(p.email ?? '')
     setPrimarySeriesId(p.primary_series_id)
     const pos = p.positions ?? []
     setPrimaryPosition(pos[0] ?? '')
@@ -288,9 +338,24 @@ export function PlayersPage() {
         }
       >
         {canAdmin ? (
-          <button className="sf-btn sf-btn-primary" onClick={openCreate}>
-            Nuevo jugador
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button className="sf-btn sf-btn-primary" onClick={openCreate}>
+              Nuevo jugador
+            </button>
+            <button
+              type="button"
+              className="sf-btn sf-btn-secondary"
+              onClick={() => {
+                setImportExcelOpen(true)
+                setImportExcelSeriesId(seriesOptions[0]?.id ?? '')
+                setImportExcelFile(null)
+                setImportExcelError(null)
+                setImportExcelResult(null)
+              }}
+            >
+              Cargar Excel
+            </button>
+          </div>
         ) : null}
       </PageHeader>
 
@@ -442,10 +507,13 @@ export function PlayersPage() {
                   const rutNormalized = normalizeRut(rut.trim())
                   const body = {
                     first_name: firstName.trim(),
+                    second_first_name: secondFirstName.trim() || null,
                     last_name: lastName.trim(),
+                    second_last_name: secondLastName.trim() || null,
                     rut: rutNormalized,
                     birth_date: birthDate,
                     phone: phone.trim(),
+                    email: email.trim() || null,
                     primary_series_id: primarySeriesId,
                     series_ids: editingPlayer?.series_ids ?? [],
                     positions,
@@ -469,10 +537,13 @@ export function PlayersPage() {
                   }
                   setEditingPlayer(null)
                   setFirstName('')
+                  setSecondFirstName('')
                   setLastName('')
+                  setSecondLastName('')
                   setRut('')
                   setBirthDate('')
                   setPhone('')
+                  setEmail('')
                   setPrimarySeriesId('')
                   setPrimaryPosition('')
                   setSecondaryPosition('')
@@ -501,14 +572,22 @@ export function PlayersPage() {
             <div className="mt-3 flex flex-col gap-4 lg:flex-row">
               <div className="flex-1 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <label className="block text-sm text-slate-700 dark:text-slate-300">
-                  Nombre
+                  Primer nombre
                   <input className={`mt-1 sf-input ${fieldErrors.firstName ? 'sf-input-invalid' : ''}`} value={firstName} onChange={(e) => { setFirstName(e.target.value); clearPlayerFieldError('firstName') }} />
                   {fieldErrors.firstName && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
                 </label>
                 <label className="block text-sm text-slate-700 dark:text-slate-300">
-                  Apellido
+                  Segundo nombre
+                  <input className="mt-1 sf-input" value={secondFirstName} onChange={(e) => setSecondFirstName(e.target.value)} placeholder="Opcional" />
+                </label>
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  Primer apellido
                   <input className={`mt-1 sf-input ${fieldErrors.lastName ? 'sf-input-invalid' : ''}`} value={lastName} onChange={(e) => { setLastName(e.target.value); clearPlayerFieldError('lastName') }} />
                   {fieldErrors.lastName && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+                </label>
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  Segundo apellido
+                  <input className="mt-1 sf-input" value={secondLastName} onChange={(e) => setSecondLastName(e.target.value)} placeholder="Opcional" />
                 </label>
                 <label className="block text-sm text-slate-700 dark:text-slate-300">
                   RUT
@@ -529,9 +608,13 @@ export function PlayersPage() {
                 {fieldErrors.birthDate && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
               </label>
               <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Teléfono
+                Teléfono / Celular
                 <input className={`mt-1 sf-input ${fieldErrors.phone ? 'sf-input-invalid' : ''}`} value={phone} onChange={(e) => { setPhone(e.target.value); clearPlayerFieldError('phone') }} placeholder="+569..." />
                 {fieldErrors.phone && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+              </label>
+              <label className="block text-sm text-slate-700 dark:text-slate-300">
+                Email
+                <input className="mt-1 sf-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional@ejemplo.com" />
               </label>
               <label className="block text-sm text-slate-700 dark:text-slate-300">
                 Serie principal
@@ -662,6 +745,155 @@ export function PlayersPage() {
               </div>
             </div>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={importExcelOpen && !!canAdmin}
+        title="Cargar jugadores desde Excel"
+        maxWidthClassName="sm:max-w-2xl"
+        onClose={() => {
+          if (!importExcelUploading) {
+            setImportExcelOpen(false)
+            setImportExcelResult(null)
+            setImportExcelFile(null)
+            setImportExcelError(null)
+          }
+        }}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              className="sf-btn sf-btn-secondary"
+              onClick={() => {
+                setImportExcelOpen(false)
+                setImportExcelResult(null)
+                setImportExcelFile(null)
+                setImportExcelError(null)
+              }}
+              disabled={importExcelUploading}
+            >
+              Cerrar
+            </button>
+            {!importExcelResult ? (
+              <button
+                className="sf-btn sf-btn-primary"
+                disabled={!importExcelSeriesId || !importExcelFile || importExcelUploading}
+                onClick={async () => {
+                  if (!importExcelFile || !importExcelSeriesId || !accessToken) return
+                  setImportExcelError(null)
+                  setImportExcelUploading(true)
+                  try {
+                    const result = await apiUpload<PlayerImportResult>('/api/players/import-excel', importExcelFile, {
+                      authToken: accessToken,
+                      form: { series_id: importExcelSeriesId },
+                    })
+                    setImportExcelResult(result)
+                    await reload()
+                  } catch (e: unknown) {
+                    setImportExcelError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
+                  } finally {
+                    setImportExcelUploading(false)
+                  }
+                }}
+              >
+                {importExcelUploading ? 'Cargando…' : 'Cargar'}
+              </button>
+            ) : null}
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            La nómina se carga <strong>por serie</strong>: elija la serie y suba el Excel. Primera fila = cabeceras: <strong>RUT</strong>, <strong>Primer Nombre</strong>, <strong>Segundo Nombre</strong>, <strong>Primer Apellido</strong>, <strong>Segundo Apellido</strong>, <strong>Fecha Nacimiento</strong> (AAAA-MM-DD o DD/MM/AAAA), <strong>Celular</strong>, <strong>Email</strong>, <strong>Posición Principal</strong>, <strong>Posición Secundaria</strong> (opcional).
+          </p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            RUT puede llevar puntos. Si el RUT ya existe, se actualiza (no se duplica). En las cajas se sigue mostrando primer nombre y primer apellido.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-800/50">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Planilla de ejemplo</span>
+            <a
+              href="/Nomina%20de%20jugadores.xlsx"
+              download="Nomina de jugadores.xlsx"
+              className="sf-btn sf-btn-primary inline-flex items-center gap-2"
+            >
+              Descargar planilla
+            </a>
+          </div>
+          {importExcelError ? (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200">{importExcelError}</div>
+          ) : null}
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Serie</span>
+            <select
+              className="mt-1 sf-input w-full"
+              value={importExcelSeriesId}
+              onChange={(e) => setImportExcelSeriesId(e.target.value)}
+              required
+            >
+              <option value="">Seleccione la serie</option>
+              {seriesOptions.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Archivo .xlsx</span>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-white file:text-sm"
+              onChange={(e) => setImportExcelFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {importExcelResult ? (
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-600 dark:bg-slate-800/50">
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="font-medium text-emerald-700 dark:text-emerald-400">Creados: {importExcelResult.inserted}</span>
+                <span className="font-medium text-blue-700 dark:text-blue-400">Actualizados: {importExcelResult.updated}</span>
+                {importExcelResult.skipped > 0 ? (
+                  <span className="font-medium text-amber-700 dark:text-amber-400">Con error: {importExcelResult.skipped}</span>
+                ) : null}
+              </div>
+              {importExcelResult.errors.length > 0 ? (
+                <div>
+                  <div className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">Errores por fila</div>
+                  <div className="max-h-56 overflow-y-auto rounded border border-slate-200 dark:border-slate-600">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
+                        <tr>
+                          <th className="px-2 py-1.5 font-semibold">Fila</th>
+                          <th className="px-2 py-1.5 font-semibold">Mensaje</th>
+                          <th className="px-2 py-1.5 font-semibold">Campo</th>
+                          <th className="px-2 py-1.5 font-semibold">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importExcelResult.errors.map((err, i) => {
+                          const pairs = formatRowAsFieldValue(err.row)
+                          return (
+                            <tr key={i} className="border-t border-slate-200 dark:border-slate-600">
+                              <td className="whitespace-nowrap px-2 py-1.5 align-top">{err.line}</td>
+                              <td className="px-2 py-1.5 text-red-600 dark:text-red-400 align-top max-w-[220px]">{err.error}</td>
+                              <td className="align-top px-2 py-1.5">
+                                <div className="flex flex-col gap-0.5 text-slate-700 dark:text-slate-300">
+                                  {pairs.length > 0 ? pairs.map((p, j) => <span key={j} className="font-medium">{p.campo}</span>) : '—'}
+                                </div>
+                              </td>
+                              <td className="align-top px-2 py-1.5 max-w-[180px]">
+                                <div className="flex flex-col gap-0.5 truncate text-slate-600 dark:text-slate-400" title={pairs.map((p) => `${p.campo}: ${p.valor}`).join('\n')}>
+                                  {pairs.length > 0 ? pairs.map((p, j) => <span key={j} className="truncate">{p.valor}</span>) : '—'}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </Modal>
 
