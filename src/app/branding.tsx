@@ -73,7 +73,7 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     refresh()
   }, [refresh])
 
-  // Favicon y og:image dinámicos cuando hay logo en BD (se actualizan al cambiar el logo)
+  // Favicon, iconos y og:image dinámicos cuando hay logo en BD (se actualizan al cambiar el logo)
   useEffect(() => {
     if (typeof document === 'undefined') return
     const fileId = branding?.logo_file_id
@@ -85,6 +85,9 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
       const favicon32 = `${base}/api/settings/favicon?size=32&v=${encodeURIComponent(fileId)}`
       const favicon16 = `${base}/api/settings/favicon?size=16&v=${encodeURIComponent(fileId)}`
       const ogImageUrl = `${base}/api/settings/og-image?v=${encodeURIComponent(fileId)}`
+      const icon192 = `${base}/api/settings/app-icon?size=192&v=${encodeURIComponent(fileId)}`
+      const icon512 = `${base}/api/settings/app-icon?size=512&v=${encodeURIComponent(fileId)}`
+      const apple180 = `${base}/api/settings/app-icon?size=180&v=${encodeURIComponent(fileId)}`
 
       const existing32 = document.querySelector('link[rel="icon"][data-dynamic-favicon="32"]')
       const existing16 = document.querySelector('link[rel="icon"][data-dynamic-favicon="16"]')
@@ -109,6 +112,32 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
         document.head.appendChild(link16)
       }
 
+      // Apple touch icon para iOS (icono de pantalla de inicio)
+      const existingApple = document.querySelector('link[rel="apple-touch-icon"][data-dynamic-app-icon="1"]') as HTMLLinkElement | null
+      if (existingApple) {
+        existingApple.href = apple180
+      } else {
+        const linkApple = document.createElement('link')
+        linkApple.rel = 'apple-touch-icon'
+        linkApple.sizes = '180x180'
+        linkApple.href = apple180
+        linkApple.setAttribute('data-dynamic-app-icon', '1')
+        document.head.appendChild(linkApple)
+      }
+
+      // Manifest dinámico apuntando al backend (usa el app-icon generado)
+      const manifestHref = `${base}/api/settings/manifest.webmanifest?v=${encodeURIComponent(fileId)}`
+      const existingManifest = document.querySelector('link[rel="manifest"][data-dynamic-manifest="1"]') as HTMLLinkElement | null
+      if (existingManifest) {
+        existingManifest.href = manifestHref
+      } else {
+        const linkManifest = document.createElement('link')
+        linkManifest.rel = 'manifest'
+        linkManifest.href = manifestHref
+        linkManifest.setAttribute('data-dynamic-manifest', '1')
+        document.head.appendChild(linkManifest)
+      }
+
       let metaOg = document.querySelector('meta[property="og:image"]')
       if (!metaOg) {
         metaOg = document.createElement('meta')
@@ -126,6 +155,10 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
       metaTw.setAttribute('content', ogImageUrl)
     } else {
       document.querySelectorAll('link[data-dynamic-favicon]').forEach((el) => el.remove())
+      const apple = document.querySelector('link[rel="apple-touch-icon"][data-dynamic-app-icon="1"]')
+      if (apple) apple.remove()
+      const manifestDynamic = document.querySelector('link[rel="manifest"][data-dynamic-manifest="1"]')
+      if (manifestDynamic) manifestDynamic.remove()
       // Opcional: quitar og:image dinámico; si no los quitamos, el último valor queda (podría ser de otra visita)
       const metaOg = document.querySelector('meta[property="og:image"]')
       const metaTw = document.querySelector('meta[name="twitter:image"]')
