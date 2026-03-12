@@ -18,6 +18,8 @@ type Series = {
   delegate_player_id?: string | null
   treasurer_user_id?: string | null
   treasurer_player_id?: string | null
+  delegate_display_name?: string | null
+  treasurer_display_name?: string | null
 }
 
 type User = {
@@ -519,8 +521,8 @@ export function SeriesPage() {
                     </div>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600 dark:text-slate-400">
-                    <span>Delegado: {assigneeLabel((s.delegate_user_id ? `user:${s.delegate_user_id}` : s.delegate_player_id ? `player:${s.delegate_player_id}` : '') as AssigneeValue)}</span>
-                    <span>Tesorero: {assigneeLabel((s.treasurer_user_id ? `user:${s.treasurer_user_id}` : s.treasurer_player_id ? `player:${s.treasurer_player_id}` : '') as AssigneeValue)}</span>
+                    <span>Delegado: {s.delegate_display_name ?? assigneeLabel((s.delegate_user_id ? `user:${s.delegate_user_id}` : s.delegate_player_id ? `player:${s.delegate_player_id}` : '') as AssigneeValue)}</span>
+                    <span>Tesorero: {s.treasurer_display_name ?? assigneeLabel((s.treasurer_user_id ? `user:${s.treasurer_user_id}` : s.treasurer_player_id ? `player:${s.treasurer_player_id}` : '') as AssigneeValue)}</span>
                   </div>
                   {s.whatsapp_group_url ? (
                     <a className="mt-1 block truncate text-xs text-slate-600 underline dark:text-slate-400" href={s.whatsapp_group_url} target="_blank" rel="noreferrer">
@@ -534,7 +536,12 @@ export function SeriesPage() {
                     {seriesPlayers.length === 0 ? (
                       <li className="text-sm text-slate-400 dark:text-slate-500">Ninguno</li>
                     ) : (
-                      seriesPlayers.map((p) => (
+                      [...seriesPlayers]
+                        .sort((a, b) => {
+                          const c = (a.first_name || '').localeCompare(b.first_name || '', 'es', { sensitivity: 'base' })
+                          return c !== 0 ? c : (a.last_name || '').localeCompare(b.last_name || '', 'es', { sensitivity: 'base' })
+                        })
+                        .map((p) => (
                         <li key={p.id} className="text-sm text-slate-700 dark:text-slate-300">
                           {p.first_name} {p.last_name}
                           {!p.active ? <span className="ml-1 text-slate-400 dark:text-slate-500">(inact.)</span> : null}

@@ -1,5 +1,5 @@
 import { Key, UserPlus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { Modal } from '../ui/Modal'
@@ -73,6 +73,15 @@ export function AdminUsersPage() {
     if (!linkModalUser || !accessToken) return
     apiFetch<Player[]>('/api/players?active=true', { authToken: accessToken }).then(setPlayers).catch(() => {})
   }, [linkModalUser, accessToken])
+
+  const playersSorted = useMemo(
+    () =>
+      [...players].sort((a, b) => {
+        const c = (a.first_name || '').localeCompare(b.first_name || '', 'es', { sensitivity: 'base' })
+        return c !== 0 ? c : (a.last_name || '').localeCompare(b.last_name || '', 'es', { sensitivity: 'base' })
+      }),
+    [players],
+  )
 
   if (me?.role !== 'admin') return <div className="text-sm text-slate-600 dark:text-slate-400">Sin permiso.</div>
 
@@ -185,7 +194,7 @@ export function AdminUsersPage() {
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Vincular a jugador (opcional)</span>
                 <select className="sf-input w-full" value={createPlayerId} onChange={(e) => setCreatePlayerId(e.target.value)}>
                   <option value="">— Ninguno —</option>
-                  {players.map((p) => (
+                  {playersSorted.map((p) => (
                     <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
                   ))}
                 </select>
@@ -300,7 +309,7 @@ export function AdminUsersPage() {
               <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Jugador</span>
               <select className="sf-input w-full" value={linkPlayerId} onChange={(e) => setLinkPlayerId(e.target.value)}>
                 <option value="">— Ninguno (desvincular) —</option>
-                {players.map((p) => (
+                {playersSorted.map((p) => (
                   <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
                 ))}
               </select>

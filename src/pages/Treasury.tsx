@@ -311,7 +311,11 @@ export function TreasuryPage() {
   const pendingTotal = useMemo(() => pending.reduce((s, p) => s + (p.amount || 0), 0), [pending])
 
   const playersSorted = useMemo(
-    () => [...players].sort((a, b) => (a.last_name + a.first_name).localeCompare(b.last_name + b.first_name)),
+    () =>
+      [...players].sort((a, b) => {
+        const c = (a.first_name || '').localeCompare(b.first_name || '', 'es', { sensitivity: 'base' })
+        return c !== 0 ? c : (a.last_name || '').localeCompare(b.last_name || '', 'es', { sensitivity: 'base' })
+      }),
     [players],
   )
   const seriesById = useMemo(() => Object.fromEntries(series.map((s) => [s.id, s])), [series])
@@ -1072,7 +1076,9 @@ export function TreasuryPage() {
                       <span className="text-slate-400 dark:text-slate-500">· {players.length} jugadores</span>
                     </h3>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                      {players.map((p) => (
+                      {[...players]
+                        .sort((a, b) => (a.player_name || '').localeCompare(b.player_name || '', 'es', { sensitivity: 'base' }))
+                        .map((p) => (
                         <div
                           key={p.player_id}
                           className={`sf-card flex flex-col gap-2 p-4 ${

@@ -167,10 +167,15 @@ export function MatchDetailPage() {
     })
   }, [players, statusByPlayerId])
 
+  const sortPlayersByName = (a: { first_name?: string; last_name?: string }, b: { first_name?: string; last_name?: string }) => {
+    const c = (a.first_name || '').localeCompare(b.first_name || '', 'es', { sensitivity: 'base' })
+    return c !== 0 ? c : (a.last_name || '').localeCompare(b.last_name || '', 'es', { sensitivity: 'base' })
+  }
+
   const groupedByStatus = useMemo(() => {
-    const confirmed = allPlayersWithStatus.filter((p) => p.status === 'confirmed')
-    const pending = allPlayersWithStatus.filter((p) => p.status === 'pending')
-    const declined = allPlayersWithStatus.filter((p) => p.status === 'declined')
+    const confirmed = allPlayersWithStatus.filter((p) => p.status === 'confirmed').sort(sortPlayersByName)
+    const pending = allPlayersWithStatus.filter((p) => p.status === 'pending').sort(sortPlayersByName)
+    const declined = allPlayersWithStatus.filter((p) => p.status === 'declined').sort(sortPlayersByName)
     return { confirmed, pending, declined }
   }, [allPlayersWithStatus])
 
