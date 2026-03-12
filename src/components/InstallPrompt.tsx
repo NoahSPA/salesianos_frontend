@@ -1,4 +1,3 @@
-import { Download, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useBranding } from '../app/branding'
 
@@ -34,7 +33,7 @@ export function InstallPrompt() {
   const { appName } = useBranding()
   const [visible, setVisible] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<{ prompt: () => Promise<{ outcome: string }> } | null>(null)
-  const [isIOSDevice, setIsIOSDevice] = useState(false)
+  const isIOSDevice = typeof navigator !== 'undefined' && isIOS()
 
   const dismiss = useCallback(() => {
     try {
@@ -58,17 +57,17 @@ export function InstallPrompt() {
       // ignore
     }
 
-    setIsIOSDevice(isIOS())
-
     const handler = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as unknown as { prompt: () => Promise<{ outcome: string }> })
     }
     window.addEventListener('beforeinstallprompt', handler)
 
-    setVisible(true)
-
-    return () => window.removeEventListener('beforeinstallprompt', handler)
+    const id = setTimeout(() => setVisible(true), 0)
+    return () => {
+      clearTimeout(id)
+      window.removeEventListener('beforeinstallprompt', handler)
+    }
   }, [])
 
   const handleInstall = useCallback(async () => {
@@ -109,7 +108,11 @@ export function InstallPrompt() {
             onClick={handleInstall}
             className="sf-btn sf-btn-primary inline-flex items-center gap-1.5 px-3 py-2 text-sm"
           >
-            <Download className="h-4 w-4" aria-hidden />
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
             Instalar
           </button>
         ) : null}
@@ -119,7 +122,10 @@ export function InstallPrompt() {
           className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:text-slate-200"
           aria-label="Cerrar"
         >
-          <X className="h-5 w-5" />
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
       </div>
     </div>
