@@ -139,6 +139,8 @@ export function DashboardPage() {
 
   const [feeStatus, setFeeStatus] = useState<PlayerFeeStatus[] | null>(null)
   const [feeStatusError, setFeeStatusError] = useState<string | null>(null)
+  /** Conteo de jugadores cuando no hay permiso a /api/fees/status (ej. rol jugador) */
+  const [playersCountFallback, setPlayersCountFallback] = useState<number | null>(null)
 
   const [feeSummary, setFeeSummary] = useState<FeeSummary | null>(null)
   const [pendingPaymentsCount, setPendingPaymentsCount] = useState<number>(0)
@@ -159,6 +161,7 @@ export function DashboardPage() {
       setLoading(true)
       setError(null)
       setFeeStatusError(null)
+      setPlayersCountFallback(null)
       try {
         const baseCalls: [Promise<Match[]>, Promise<Series[]>, Promise<Tournament[]>] = [
           apiFetch<Match[]>(`/api/matches?from_date=${encodeURIComponent(from)}`, { authToken: accessToken }),
@@ -190,6 +193,13 @@ export function DashboardPage() {
         } catch (e: unknown) {
           setFeeStatus(null)
           setFeeStatusError(e instanceof Error ? e.message : 'Sin permiso o error al cargar cuotas')
+          // Rol jugador no tiene permiso a fees/status: usar lista de jugadores para el conteo del dashboard
+          try {
+            const list = await apiFetch<{ id: string }[]>('/api/players?active=true', { authToken: accessToken })
+            setPlayersCountFallback(Array.isArray(list) ? list.length : 0)
+          } catch {
+            setPlayersCountFallback(0)
+          }
         }
 
         const activeSeries = ss.filter((x) => x.active)
@@ -237,10 +247,21 @@ export function DashboardPage() {
     return base
   }, [feeStatus])
 
-  const totalPlayers = feeCounts.al_dia + feeCounts.pendiente + feeCounts.atrasado
+  const totalPlayers =
+    feeStatus !== null ? feeCounts.al_dia + feeCounts.pendiente + feeCounts.atrasado : (playersCountFallback ?? 0)
   const pct = (n: number) => (totalPlayers ? Math.round((n / totalPlayers) * 100) : 0)
 
-  const nextMatches = useMemo(() => matches.slice(0, 5), [matches])
+  /** Próximo partido a jugar por serie (el más cercano por cada serie) */
+  const nextMatches = useMemo(() => {
+    const seen = new Set<string>()
+    const onePerSeries: Match[] = []
+    for (const m of matches) {
+      if (seen.has(m.series_id)) continue
+      seen.add(m.series_id)
+      onePerSeries.push(m)
+    }
+    return onePerSeries
+  }, [matches])
   const activeSeriesCount = useMemo(() => series.filter((s) => s.active).length, [series])
   const activeTournamentsCount = useMemo(() => tournaments.filter((t) => t.active).length, [tournaments])
 

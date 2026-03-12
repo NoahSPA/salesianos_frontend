@@ -411,7 +411,7 @@ export function TreasuryPage() {
                   onChange={(e) => setSeriesId(e.target.value)}
                   aria-label="Filtrar por serie"
                 >
-                  <option value="">Todas las series</option>
+                  <option value="">Todas</option>
                   {series.filter((s) => s.active).map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}

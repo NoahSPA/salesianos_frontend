@@ -64,13 +64,36 @@ export function MatchesPage() {
   const tournamentOptions = useMemo(() => tournaments.filter((t) => t.active), [tournaments])
   const seriesById = useMemo(() => Object.fromEntries(series.map((s) => [s.id, s])), [series])
   const tournamentById = useMemo(() => Object.fromEntries(tournaments.map((t) => [t.id, t])), [tournaments])
-  const itemsOrdenados = useMemo(() => [...items].sort((a, b) => a.match_date.localeCompare(b.match_date)), [items])
+
+  /** Hoy en YYYY-MM-DD para separar próximos vs jugados */
+  const today = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
+
+  /** Orden intuitivo: próximos (más cercano primero) y luego historial (más reciente primero) */
+  const itemsOrdenados = useMemo(() => {
+    const upcoming = items.filter((m) => m.match_date >= today)
+    const past = items.filter((m) => m.match_date < today)
+    const sortUpcoming = (a: Match, b: Match) =>
+      a.match_date.localeCompare(b.match_date) || a.call_time.localeCompare(b.call_time)
+    const sortPast = (a: Match, b: Match) =>
+      b.match_date.localeCompare(a.match_date) || b.call_time.localeCompare(a.call_time)
+    return [...upcoming.sort(sortUpcoming), ...past.sort(sortPast)]
+  }, [items, today])
 
   const [filterSeriesId, setFilterSeriesId] = useState('')
   const itemsFiltrados = useMemo(() => {
     if (!filterSeriesId) return itemsOrdenados
     return itemsOrdenados.filter((m) => String(m.series_id) === String(filterSeriesId))
   }, [itemsOrdenados, filterSeriesId])
+
+  /** Secciones para la vista: próximos (fecha >= hoy) y historial (fecha < hoy) */
+  const { upcoming: filtradosProximos, past: filtradosHistorial } = useMemo(() => {
+    const prox = itemsFiltrados.filter((m) => m.match_date >= today)
+    const hist = itemsFiltrados.filter((m) => m.match_date < today)
+    return { upcoming: prox, past: hist }
+  }, [itemsFiltrados, today])
   const rivalsBySeries = useMemo(() => {
     if (!seriesId) return []
     return rivals.filter((r) => r.active && (r.series_ids ?? []).includes(seriesId))
@@ -152,6 +175,111 @@ export function MatchesPage() {
       >
         {s.label}
       </span>
+    )
+  }
+
+  function matchCard(m: Match) {
+    const serie = seriesById[m.series_id]
+    const torneo = tournamentById[m.tournament_id]
+    const dateObj = m.match_date ? new Date(m.match_date + 'T12:00:00') : null
+    const fechaLabel = dateObj ? dateObj.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : m.match_date
+    const our = m.our_goals ?? null
+    const opp = m.opponent_goals ?? null
+    const hasResult = our != null && opp != null
+    const resultVariant = hasResult
+      ? our > opp
+        ? 'win'
+        : our < opp
+          ? 'loss'
+          : 'draw'
+      : null
+    const borderAccent = resultVariant
+      ? resultVariant === 'win'
+        ? 'border-l-4 border-l-emerald-500 dark:border-l-emerald-400'
+        : resultVariant === 'loss'
+          ? 'border-l-4 border-l-rose-500 dark:border-l-rose-400'
+          : 'border-l-4 border-l-amber-500 dark:border-l-amber-400'
+      : ''
+    return (
+      <Link
+        key={m.id}
+        to={`/matches/${m.id}`}
+        className={
+          'sf-card group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-slate-300 hover:shadow-md dark:border-slate-600 dark:bg-slate-800/50 dark:hover:border-slate-500 dark:hover:bg-slate-700/50 ' +
+          borderAccent
+        }
+      >
+        <div className="flex items-start justify-between gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-600 dark:bg-slate-800/80">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{fechaLabel}</span>
+            {serie ? <SeriesBadge seriesId={m.series_id} name={serie.name} color={serie.color} /> : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {statusBadge(m.status)}
+            {canCreate ? (
+              <Link
+                to={`/matches?edit=${m.id}`}
+                className="rounded p-1.5 text-slate-400 opacity-0 transition-opacity hover:bg-slate-200 hover:text-slate-700 group-hover:opacity-100 dark:hover:bg-slate-600 dark:hover:text-slate-300"
+                onClick={(e) => e.stopPropagation()}
+                title="Editar partido"
+                aria-label="Editar partido"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+              </Link>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex flex-1 flex-col px-4 py-4">
+          <div className="flex w-full items-center gap-3">
+            <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-slate-700 dark:text-slate-300" title={appName}>
+              {appName}
+            </span>
+            {hasResult && our != null && opp != null ? (
+              <span
+                className={
+                  'shrink-0 inline-flex min-w-[4rem] justify-center rounded-lg px-3 py-1.5 text-2xl font-bold tabular-nums ' +
+                  (resultVariant === 'win'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                    : resultVariant === 'loss'
+                      ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300')
+                }
+              >
+                {our}–{opp}
+              </span>
+            ) : (
+              <span className="shrink-0 rounded bg-slate-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                VS
+              </span>
+            )}
+            <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-800 dark:text-slate-200" title={m.opponent}>
+              {m.opponent}
+            </span>
+          </div>
+          {hasResult && (
+            <div className="mt-3 flex justify-center">
+              <span
+                className={
+                  'sf-badge text-xs ' +
+                  (resultVariant === 'win' ? 'sf-badge-emerald' : resultVariant === 'loss' ? 'sf-badge-rose' : 'sf-badge-amber')
+                }
+              >
+                {resultVariant === 'win' ? 'Ganado' : resultVariant === 'loss' ? 'Perdido' : 'Empate'}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-400">
+          <span>Citación {m.call_time}</span>
+          {m.field_number ? (
+            <span className="rounded bg-slate-100 px-2 py-0.5 dark:bg-slate-700">Cancha {m.field_number}</span>
+          ) : null}
+          {torneo ? <span className="truncate text-slate-500 dark:text-slate-500">{torneo.name}</span> : null}
+          {!hasResult && m.result ? (
+            <span className="ml-auto font-medium text-slate-700 dark:text-slate-300">Resultado: {m.result}</span>
+          ) : null}
+        </div>
+      </Link>
     )
   }
 
@@ -452,122 +580,27 @@ export function MatchesPage() {
           No hay partidos en esta serie.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {itemsFiltrados.map((m) => {
-            const serie = seriesById[m.series_id]
-            const torneo = tournamentById[m.tournament_id]
-            const dateObj = m.match_date ? new Date(m.match_date + 'T12:00:00') : null
-            const fechaLabel = dateObj ? dateObj.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : m.match_date
-            const our = m.our_goals ?? null
-            const opp = m.opponent_goals ?? null
-            const hasResult = our != null && opp != null
-            const resultVariant = hasResult
-              ? our > opp
-                ? 'win'
-                : our < opp
-                  ? 'loss'
-                  : 'draw'
-              : null
-            const borderAccent = resultVariant
-              ? resultVariant === 'win'
-                ? 'border-l-4 border-l-emerald-500 dark:border-l-emerald-400'
-                : resultVariant === 'loss'
-                  ? 'border-l-4 border-l-rose-500 dark:border-l-rose-400'
-                  : 'border-l-4 border-l-amber-500 dark:border-l-amber-400'
-              : ''
-            return (
-              <Link
-                key={m.id}
-                to={`/matches/${m.id}`}
-                className={
-                  'sf-card group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:border-slate-300 hover:shadow-md dark:border-slate-600 dark:bg-slate-800/50 dark:hover:border-slate-500 dark:hover:bg-slate-700/50 ' +
-                  borderAccent
-                }
-              >
-                {/* Cabecera: fecha destacada + serie + estado */}
-                <div className="flex items-start justify-between gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-600 dark:bg-slate-800/80">
-                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                      {fechaLabel}
-                    </span>
-                  {serie ? (
-                    <SeriesBadge seriesId={m.series_id} name={serie.name} color={serie.color} />
-                  ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {statusBadge(m.status)}
-                    {canCreate ? (
-                      <Link
-                        to={`/matches?edit=${m.id}`}
-                        className="rounded p-1.5 text-slate-400 opacity-0 transition-opacity hover:bg-slate-200 hover:text-slate-700 group-hover:opacity-100 dark:hover:bg-slate-600 dark:hover:text-slate-300"
-                        onClick={(e) => e.stopPropagation()}
-                        title="Editar partido"
-                        aria-label="Editar partido"
-                      >
-                        <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
-                      </Link>
-                    ) : null}
-                  </div>
-                </div>
-
-                {/* Cuerpo: fixture equipo – resultado – rival (espacio equitativo) */}
-                <div className="flex flex-1 flex-col px-4 py-4">
-                  <div className="flex w-full items-center gap-3">
-                    <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-slate-700 dark:text-slate-300" title={appName}>
-                      {appName}
-                    </span>
-                    {hasResult && our != null && opp != null ? (
-                      <span
-                        className={
-                          'shrink-0 inline-flex min-w-[4rem] justify-center rounded-lg px-3 py-1.5 text-2xl font-bold tabular-nums ' +
-                          (resultVariant === 'win'
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                            : resultVariant === 'loss'
-                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300')
-                        }
-                      >
-                        {our}–{opp}
-                      </span>
-                    ) : (
-                      <span className="shrink-0 rounded bg-slate-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-700 dark:text-slate-400">
-                        VS
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-800 dark:text-slate-200" title={m.opponent}>
-                      {m.opponent}
-                    </span>
-                  </div>
-                  {hasResult && (
-                    <div className="mt-3 flex justify-center">
-                      <span
-                        className={
-                          'sf-badge text-xs ' +
-                          (resultVariant === 'win' ? 'sf-badge-emerald' : resultVariant === 'loss' ? 'sf-badge-rose' : 'sf-badge-amber')
-                        }
-                      >
-                        {resultVariant === 'win' ? 'Ganado' : resultVariant === 'loss' ? 'Perdido' : 'Empate'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Pie: citación, cancha, torneo */}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-400">
-                  <span>Citación {m.call_time}</span>
-                  {m.field_number ? (
-                    <span className="rounded bg-slate-100 px-2 py-0.5 dark:bg-slate-700">Cancha {m.field_number}</span>
-                  ) : null}
-                  {torneo ? (
-                    <span className="truncate text-slate-500 dark:text-slate-500">{torneo.name}</span>
-                  ) : null}
-                  {!hasResult && m.result ? (
-                    <span className="ml-auto font-medium text-slate-700 dark:text-slate-300">Resultado: {m.result}</span>
-                  ) : null}
-                </div>
-              </Link>
-            )
-          })}
+        <div className="space-y-8">
+          {filtradosProximos.length > 0 ? (
+            <section aria-labelledby="partidos-proximos-heading">
+              <h2 id="partidos-proximos-heading" className="mb-3 text-base font-semibold text-slate-800 dark:text-slate-200">
+                Próximos partidos
+              </h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filtradosProximos.map((m) => matchCard(m))}
+              </div>
+            </section>
+          ) : null}
+          {filtradosHistorial.length > 0 ? (
+            <section aria-labelledby="partidos-historial-heading">
+              <h2 id="partidos-historial-heading" className="mb-3 text-base font-semibold text-slate-700 dark:text-slate-300">
+                Partidos jugados
+              </h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filtradosHistorial.map((m) => matchCard(m))}
+              </div>
+            </section>
+          ) : null}
         </div>
       )}
     </div>
