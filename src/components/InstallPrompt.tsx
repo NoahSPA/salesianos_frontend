@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useBranding } from '../app/branding'
+import { useBranding } from '../app/useBranding'
 
 const DISMISS_KEY = 'salesianos-install-dismissed'
 

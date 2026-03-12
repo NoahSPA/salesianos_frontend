@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiFetch, apiUpload, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
-import { useBranding } from '../app/branding'
+import { useBranding } from '../app/useBranding'
 import { PageHeader } from '../ui/PageHeader'
 
 const DEFAULT_COLOR = '#006600'

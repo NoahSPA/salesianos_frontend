@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
-import { useBranding } from '../app/branding'
+import { useBranding } from '../app/useBranding'
 import { useTheme } from '../app/theme'
 
 function IconMoon() {
