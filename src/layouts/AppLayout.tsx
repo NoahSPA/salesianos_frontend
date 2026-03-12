@@ -5,6 +5,7 @@ import { API_BASE, apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { useBranding } from '../app/branding'
 import { useTheme } from '../app/theme'
+import { InstallPrompt } from '../components/InstallPrompt'
 import { Modal } from '../ui/Modal'
 
 function IconMoon() {
@@ -288,6 +289,7 @@ export function AppLayout() {
       {/* Body: área principal con scroll */}
       <main className="min-h-0 flex-1 overflow-y-auto pt-14 pb-16 md:pl-[260px] md:pb-12">
         <div className="mx-auto max-w-7xl px-4 py-4 md:py-6">
+          <InstallPrompt />
           <Outlet />
         </div>
       </main>
