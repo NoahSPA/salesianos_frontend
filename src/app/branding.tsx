@@ -85,8 +85,6 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
       const favicon32 = `${base}/api/settings/favicon?size=32&v=${encodeURIComponent(fileId)}`
       const favicon16 = `${base}/api/settings/favicon?size=16&v=${encodeURIComponent(fileId)}`
       const ogImageUrl = `${base}/api/settings/og-image?v=${encodeURIComponent(fileId)}`
-      const icon192 = `${base}/api/settings/app-icon?size=192&v=${encodeURIComponent(fileId)}`
-      const icon512 = `${base}/api/settings/app-icon?size=512&v=${encodeURIComponent(fileId)}`
       const apple180 = `${base}/api/settings/app-icon?size=180&v=${encodeURIComponent(fileId)}`
 
       const existing32 = document.querySelector('link[rel="icon"][data-dynamic-favicon="32"]')
