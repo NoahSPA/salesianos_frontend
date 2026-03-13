@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { apiFetch } from '../app/api'
 import { useTheme } from '../app/theme'
+import { Button } from '../ui/Button'
+import { IconSend } from '../ui/Icons'
 import { formatRutDisplay, normalizeRut, RUT_INVALID_MESSAGE, validateRut } from '../utils/rut'
 
 type PublicInfo = {
@@ -182,9 +184,9 @@ export function PublicConfirmPage() {
 
         {msg && <div className="rounded-md bg-slate-100 p-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">{msg}</div>}
 
-        <button className="w-full sf-btn sf-btn-primary" disabled={loading}>
+        <Button type="submit" variant="primary" icon={<IconSend />} loading={loading} className="w-full">
           {loading ? 'Enviando…' : 'Enviar'}
-        </button>
+        </Button>
       </form>
       </div>
     </div>

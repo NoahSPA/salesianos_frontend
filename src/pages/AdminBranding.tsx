@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { apiFetch, apiUpload, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { useBranding } from '../app/useBranding'
+import { Button } from '../ui/Button'
+import { IconCheck, IconRotateCcw } from '../ui/Icons'
 import { PageHeader } from '../ui/PageHeader'
 
 const DEFAULT_COLOR = '#006600'
@@ -148,17 +150,19 @@ export function AdminBrandingPage() {
             aria-label="Nombre del sistema"
           />
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
-              className="sf-btn sf-btn-primary"
+              variant="primary"
+              icon={<IconCheck />}
+              loading={savingName}
               disabled={savingName}
               onClick={handleSaveAppName}
             >
               {savingName ? 'Guardando…' : 'Guardar nombre'}
-            </button>
-            <button type="button" className="sf-btn sf-btn-secondary" onClick={handleResetAppName}>
+            </Button>
+            <Button type="button" variant="secondary" icon={<IconRotateCcw />} onClick={handleResetAppName}>
               Restaurar por defecto
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -214,17 +218,19 @@ export function AdminBrandingPage() {
             />
           </div>
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
-              className="sf-btn sf-btn-primary"
+              variant="primary"
+              icon={<IconCheck />}
+              loading={saving}
               disabled={saving}
               onClick={handleSaveColor}
             >
               {saving ? 'Guardando…' : 'Guardar color'}
-            </button>
-            <button type="button" className="sf-btn sf-btn-secondary" onClick={handleResetColor}>
+            </Button>
+            <Button type="button" variant="secondary" icon={<IconRotateCcw />} onClick={handleResetColor}>
               Restaurar por defecto
-            </button>
+            </Button>
           </div>
         </div>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">

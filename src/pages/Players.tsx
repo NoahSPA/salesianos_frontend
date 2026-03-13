@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { apiFetch, apiUpload, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { Button } from '../ui/Button'
+import { IconCheck, IconFileSpreadsheet, IconPlus, IconX } from '../ui/Icons'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
@@ -10,6 +12,8 @@ import { getPlayerAvatarUrl } from '../utils/avatar'
 import { Switch } from '../ui/Switch'
 
 type Series = { id: string; name: string; active: boolean; color?: string | null }
+
+const TALLA_OPCIONES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'] as const
 
 type Player = {
   id: string
@@ -29,6 +33,9 @@ type Player = {
   notes?: string | null
   avatar_url?: string | null
   avatar_file_id?: string | null
+  dorsal?: number | null
+  talla?: string | null
+  in_memoriam?: boolean
 }
 
 type PlayerImportResult = {
@@ -154,6 +161,9 @@ export function PlayersPage() {
   const [secondaryPosition, setSecondaryPosition] = useState('')
   const [levelStars, setLevelStars] = useState<number>(3)
   const [active, setActive] = useState(true)
+  const [inMemoriam, setInMemoriam] = useState(false)
+  const [dorsal, setDorsal] = useState<string>('')
+  const [talla, setTalla] = useState<string>('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({})
@@ -192,6 +202,9 @@ export function PlayersPage() {
     setSecondaryPosition('')
     setLevelStars(3)
     setActive(true)
+    setInMemoriam(false)
+    setDorsal('')
+    setTalla('')
     setAvatarUrl('')
     setOpen(true)
   }
@@ -213,6 +226,9 @@ export function PlayersPage() {
     setSecondaryPosition(pos[1] ?? '')
     setLevelStars(p.level_stars ?? 3)
     setActive(p.active)
+    setInMemoriam(p.in_memoriam ?? false)
+    setDorsal(p.dorsal != null ? String(p.dorsal) : '')
+    setTalla(p.talla ?? '')
     setAvatarUrl(p.avatar_url ?? '')
     setOpen(true)
   }
@@ -339,12 +355,12 @@ export function PlayersPage() {
       >
         {canAdmin ? (
           <div className="flex flex-wrap items-center gap-2">
-            <button className="sf-btn sf-btn-primary" onClick={openCreate}>
+            <Button variant="primary" icon={<IconPlus />} onClick={openCreate}>
               Nuevo jugador
-            </button>
-            <button
-              type="button"
-              className="sf-btn sf-btn-secondary"
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<IconFileSpreadsheet />}
               onClick={() => {
                 setImportExcelOpen(true)
                 setImportExcelSeriesId(seriesOptions[0]?.id ?? '')
@@ -354,7 +370,7 @@ export function PlayersPage() {
               }}
             >
               Cargar Excel
-            </button>
+            </Button>
           </div>
         ) : null}
       </PageHeader>
@@ -372,21 +388,22 @@ export function PlayersPage() {
                   className="absolute inset-0 w-full h-full object-cover"
                 />
                 {playersOnField.map(({ player, x, y }) => {
-                  const initials = `${(player.first_name || '').trim().slice(0, 1)}${(player.last_name || '').trim().slice(0, 1)}`.toUpperCase() || '?'
+                  const display = player.dorsal != null ? String(player.dorsal).padStart(2, '0') : `${(player.first_name || '').trim().slice(0, 1)}${(player.last_name || '').trim().slice(0, 1)}`.toUpperCase() || '?'
+                  const isMemoria = player.in_memoriam
                   return (
                     <div
                       key={player.id}
-                      className="absolute flex items-center justify-center rounded-full border-2 border-white shadow-md cursor-pointer hover:opacity-90 text-white text-xs font-semibold select-none w-8 h-8"
+                      className={`absolute flex items-center justify-center rounded-full border-2 border-white shadow-md cursor-pointer hover:opacity-90 text-white text-xs font-semibold select-none w-8 h-8 ${isMemoria ? 'opacity-75' : ''}`}
                       style={{
                         left: `${x}%`,
                         top: `${y}%`,
                         transform: 'translate(-50%, -50%)',
-                        backgroundColor: player.active ? '#006600' : '#64748b',
+                        backgroundColor: isMemoria ? '#64748b' : (player.active ? '#006600' : '#64748b'),
                       }}
                       onClick={() => canAdmin && openEdit(player)}
                       title={`${player.first_name} ${player.last_name}${canAdmin ? ' · Clic para editar' : ''}`}
                     >
-                      {initials}
+                      {display}
                     </div>
                   )
                 })}
@@ -400,11 +417,23 @@ export function PlayersPage() {
                 const prim = (p.positions ?? [])[0]
                 const sec = (p.positions ?? [])[1]
                 return (
-                  <div key={p.id} className="sf-card relative flex flex-col gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-600">
+                  <div
+                    key={p.id}
+                    className={`sf-card relative flex flex-col gap-2 rounded-lg border p-3 ${
+                      p.in_memoriam
+                        ? 'border-slate-300 bg-slate-100/80 dark:border-slate-600 dark:bg-slate-800/60 grayscale'
+                        : 'border-slate-200 dark:border-slate-600'
+                    }`}
+                  >
+                    {p.dorsal != null ? (
+                      <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none text-7xl font-bold leading-none text-slate-400/80 dark:text-slate-500/80" aria-hidden>
+                        {String(p.dorsal).padStart(2, '0')}
+                      </div>
+                    ) : null}
                     {canAdmin ? (
                       <button
                         type="button"
-                        className="absolute right-2 top-2 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                        className="absolute right-2 top-2 z-10 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-300"
                         onClick={() => openEdit(p)}
                         title="Editar"
                         aria-label="Editar jugador"
@@ -420,12 +449,20 @@ export function PlayersPage() {
                             {p.first_name} {p.last_name}
                           </span>
                         </div>
-                        {primarySeries ? (
+                        {p.in_memoriam ? (
+                          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            {typeof p.birth_date === 'string' ? p.birth_date.slice(0, 10) : p.birth_date}
+                          </p>
+                        ) : primarySeries ? (
                           <SeriesBadge seriesId={p.primary_series_id} name={primarySeries.name} color={primarySeries.color} className="mt-1" />
                         ) : null}
                       </div>
                     </div>
-                    <div className="text-xs text-slate-500 truncate dark:text-slate-400" title={p.rut}>{p.rut}</div>
+                    {!p.in_memoriam ? (
+                    <>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      <span className="truncate" title={p.rut}>{p.rut}</span>
+                    </div>
                     <div className="mt-auto space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                       <div className="truncate">
                         {prim ? `${posLabel[prim] ?? prim}${sec ? ` · ${posLabel[sec] ?? sec}` : ''}` : '—'}
@@ -458,10 +495,16 @@ export function PlayersPage() {
                             size="sm"
                           />
                         ) : (
-                          <Switch checked={!!p.active} onChange={() => {}} disabled size="sm" aria-label={p.active ? 'Activo' : 'Inactivo'} />
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {p.active ? 'Activo' : 'Inactivo'}
+                          </span>
                         )}
                       </div>
                     </div>
+                    </>
+                    ) : (
+                      <p className="mt-1 text-xs italic text-slate-500 dark:text-slate-400">En memoria</p>
+                    )}
                   </div>
                 )
               })}
@@ -477,11 +520,13 @@ export function PlayersPage() {
         onClose={closeModal}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={closeModal} disabled={creating}>
+            <Button variant="secondary" icon={<IconX />} onClick={closeModal} disabled={creating}>
               Cancelar
-            </button>
-            <button
-              className="sf-btn sf-btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={creating}
               disabled={creating}
               onClick={async () => {
                 if (!accessToken) return
@@ -489,36 +534,53 @@ export function PlayersPage() {
                 const err: Record<string, boolean> = {}
                 if (!firstName.trim()) err.firstName = true
                 if (!lastName.trim()) err.lastName = true
-                if (!rut.trim()) err.rut = true
-                else if (!validateRut(rut.trim())) err.rut = true
-                if (!birthDate) err.birthDate = true
-                if (!phone.trim()) err.phone = true
-                if (!primarySeriesId) err.primarySeriesId = true
-                if (!primaryPosition) err.primaryPosition = true
-                if (levelStars < 1) err.levelStars = true
+                if (inMemoriam) {
+                  if (!dorsal.trim()) err.dorsal = true
+                  else {
+                    const d = parseInt(dorsal, 10)
+                    if (isNaN(d) || d < 1 || d > 99) err.dorsal = true
+                  }
+                  if (!birthDate) err.birthDate = true
+                  if (!primarySeriesId) err.primarySeriesId = true
+                  if (!rut.trim()) err.rut = true
+                  else if (!validateRut(rut.trim())) err.rut = true
+                } else {
+                  if (!rut.trim()) err.rut = true
+                  else if (!validateRut(rut.trim())) err.rut = true
+                  if (!birthDate) err.birthDate = true
+                  if (!phone.trim()) err.phone = true
+                  if (!primarySeriesId) err.primarySeriesId = true
+                  if (!primaryPosition) err.primaryPosition = true
+                  if (levelStars < 1) err.levelStars = true
+                }
                 if (Object.keys(err).length > 0) {
                   setFieldErrors(err)
                   return
                 }
                 setFieldErrors({})
                 setCreating(true)
-                const positions = [primaryPosition, secondaryPosition].filter(Boolean)
+                const positions = inMemoriam ? ['cm'] : [primaryPosition, secondaryPosition].filter(Boolean)
                 try {
-                  const rutNormalized = normalizeRut(rut.trim())
+                  const rutVal = normalizeRut(rut.trim())
+                  const phoneVal = inMemoriam ? '00000000' : phone.trim()
+                  const dorsalVal = dorsal.trim() ? parseInt(dorsal, 10) || null : null
                   const body = {
                     first_name: firstName.trim(),
                     second_first_name: secondFirstName.trim() || null,
                     last_name: lastName.trim(),
                     second_last_name: secondLastName.trim() || null,
-                    rut: rutNormalized,
+                    rut: rutVal,
                     birth_date: birthDate,
-                    phone: phone.trim(),
-                    email: email.trim() || null,
+                    phone: phoneVal,
+                    email: inMemoriam ? null : (email.trim() || null),
                     primary_series_id: primarySeriesId,
                     series_ids: editingPlayer?.series_ids ?? [],
                     positions,
-                    level_stars: levelStars,
-                    active,
+                    level_stars: inMemoriam ? 3 : levelStars,
+                    active: inMemoriam ? false : active,
+                    dorsal: dorsalVal,
+                    talla: inMemoriam ? null : (talla.trim() || null),
+                    in_memoriam: inMemoriam,
                     notes: editingPlayer?.notes ?? null,
                     avatar_url: avatarUrl.trim() || null,
                   }
@@ -549,6 +611,9 @@ export function PlayersPage() {
                   setSecondaryPosition('')
                   setLevelStars(3)
                   setActive(true)
+                  setInMemoriam(false)
+                  setDorsal('')
+                  setTalla('')
                   setAvatarUrl('')
                   await reload()
                   setOpen(false)
@@ -560,7 +625,7 @@ export function PlayersPage() {
               }}
             >
               {creating ? (editingPlayer ? 'Guardando…' : 'Creando…') : editingPlayer ? 'Guardar' : 'Crear'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -568,7 +633,13 @@ export function PlayersPage() {
           {error ? <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200">{error}</div> : null}
           {/* 1. Datos del jugador + Serie */}
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-600">
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Datos del jugador</div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Datos del jugador</div>
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                <Switch checked={inMemoriam} onChange={setInMemoriam} aria-label="En memoria" />
+                <span>En memoria (fallecido)</span>
+              </label>
+            </div>
             <div className="mt-3 flex flex-col gap-4 lg:flex-row">
               <div className="flex-1 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <label className="block text-sm text-slate-700 dark:text-slate-300">
@@ -592,30 +663,64 @@ export function PlayersPage() {
                 <label className="block text-sm text-slate-700 dark:text-slate-300">
                   RUT
                   <input
-                    className={`mt-1 sf-input ${fieldErrors.rut ? 'sf-input-invalid' : ''}`}
-                    value={rut}
-                    onChange={(e) => {
-                      setRut(formatRutDisplay(e.target.value))
-                      clearPlayerFieldError('rut')
-                    }}
-                    placeholder="12.345.678-5"
-                  />
-                  {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{!rut.trim() ? 'Requerido' : RUT_INVALID_MESSAGE}</span>}
+                      className={`mt-1 sf-input ${fieldErrors.rut ? 'sf-input-invalid' : ''}`}
+                      value={rut}
+                      onChange={(e) => {
+                        setRut(formatRutDisplay(e.target.value))
+                        clearPlayerFieldError('rut')
+                      }}
+                      placeholder="12.345.678-5"
+                    />
+                    {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{!rut.trim() ? 'Requerido' : RUT_INVALID_MESSAGE}</span>}
                 </label>
                 <label className="block text-sm text-slate-700 dark:text-slate-300">
                   Nacimiento
                 <input className={`mt-1 sf-input ${fieldErrors.birthDate ? 'sf-input-invalid' : ''}`} type="date" value={birthDate} onChange={(e) => { setBirthDate(e.target.value); clearPlayerFieldError('birthDate') }} />
                 {fieldErrors.birthDate && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
               </label>
+              {!inMemoriam ? (
+                <>
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Teléfono / Celular
+                    <input className={`mt-1 sf-input ${fieldErrors.phone ? 'sf-input-invalid' : ''}`} value={phone} onChange={(e) => { setPhone(e.target.value); clearPlayerFieldError('phone') }} placeholder="+569..." />
+                    {fieldErrors.phone && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+                  </label>
+                  <label className="block text-sm text-slate-700 dark:text-slate-300">
+                    Email
+                    <input className="mt-1 sf-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional@ejemplo.com" />
+                  </label>
+                </>
+              ) : null}
               <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Teléfono / Celular
-                <input className={`mt-1 sf-input ${fieldErrors.phone ? 'sf-input-invalid' : ''}`} value={phone} onChange={(e) => { setPhone(e.target.value); clearPlayerFieldError('phone') }} placeholder="+569..." />
-                {fieldErrors.phone && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+                <span className="block">Dorsal {inMemoriam ? '(requerido)' : ''}</span>
+                <input
+                  className={`mt-1 sf-input w-20 ${fieldErrors.dorsal ? 'sf-input-invalid' : ''}`}
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={dorsal}
+                  onChange={(e) => { setDorsal(e.target.value); clearPlayerFieldError('dorsal') }}
+                  placeholder="—"
+                  title="Número de camiseta"
+                />
+                {fieldErrors.dorsal && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido para jugador en memoria</span>}
               </label>
+              {!inMemoriam ? (
               <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Email
-                <input className="mt-1 sf-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="opcional@ejemplo.com" />
+                <span className="block">Talla</span>
+                <select
+                  className="mt-1 sf-input"
+                  value={talla}
+                  onChange={(e) => setTalla(e.target.value)}
+                  aria-label="Talla de camiseta"
+                >
+                  <option value="">—</option>
+                  {TALLA_OPCIONES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
               </label>
+              ) : null}
               <label className="block text-sm text-slate-700 dark:text-slate-300">
                 Serie principal
                 <select
@@ -634,7 +739,7 @@ export function PlayersPage() {
                   ))}
                 </select>
               </label>
-              {editingPlayer ? (
+              {editingPlayer && !inMemoriam ? (
                 <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                   <Switch checked={active} onChange={setActive} aria-label="Activo" />
                   <span>Activo</span>
@@ -701,7 +806,8 @@ export function PlayersPage() {
             </div>
           </div>
 
-          {/* 2. Posiciones (70%) + 3. Nivel (30%) en la misma fila */}
+          {/* 2. Posiciones (70%) + 3. Nivel (30%) en la misma fila — ocultos para memoria */}
+          {!inMemoriam ? (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[7fr_3fr]">
             <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-600">
               <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Posiciones</div>
@@ -745,6 +851,7 @@ export function PlayersPage() {
               </div>
             </div>
           </div>
+          ) : null}
         </div>
       </Modal>
 
@@ -762,8 +869,9 @@ export function PlayersPage() {
         }}
         footer={
           <div className="flex justify-end gap-2">
-            <button
-              className="sf-btn sf-btn-secondary"
+            <Button
+              variant="secondary"
+              icon={<IconX />}
               onClick={() => {
                 setImportExcelOpen(false)
                 setImportExcelResult(null)
@@ -773,10 +881,12 @@ export function PlayersPage() {
               disabled={importExcelUploading}
             >
               Cerrar
-            </button>
+            </Button>
             {!importExcelResult ? (
-              <button
-                className="sf-btn sf-btn-primary"
+              <Button
+                variant="primary"
+                icon={<IconCheck />}
+                loading={importExcelUploading}
                 disabled={!importExcelSeriesId || !importExcelFile || importExcelUploading}
                 onClick={async () => {
                   if (!importExcelFile || !importExcelSeriesId || !accessToken) return
@@ -797,7 +907,7 @@ export function PlayersPage() {
                 }}
               >
                 {importExcelUploading ? 'Cargando…' : 'Cargar'}
-              </button>
+              </Button>
             ) : null}
           </div>
         }

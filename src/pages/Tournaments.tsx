@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { Button } from '../ui/Button'
+import { IconCheck, IconPlus, IconX } from '../ui/Icons'
 import { MapboxPointPicker, type MapPoint } from '../ui/MapboxPointPicker'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
@@ -250,9 +252,9 @@ export function TournamentsPage() {
         }
       >
         {canAdmin ? (
-          <button className="sf-btn sf-btn-primary" onClick={() => { setCreateFieldErrors({}); setCreateSeriesIds([]); setOpen(true) }}>
+          <Button variant="primary" icon={<IconPlus />} onClick={() => { setCreateFieldErrors({}); setCreateSeriesIds([]); setOpen(true) }}>
             Nuevo torneo
-          </button>
+          </Button>
         ) : null}
       </PageHeader>
 
@@ -266,11 +268,13 @@ export function TournamentsPage() {
         }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => setOpen(false)} disabled={creating}>
+            <Button variant="secondary" icon={<IconX />} onClick={() => setOpen(false)} disabled={creating}>
               Cancelar
-            </button>
-            <button
-              className="sf-btn sf-btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={creating}
               disabled={creating}
               onClick={async () => {
                 if (!accessToken) return
@@ -318,7 +322,7 @@ export function TournamentsPage() {
               }}
             >
               {creating ? 'Creando…' : 'Crear'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -406,11 +410,13 @@ export function TournamentsPage() {
         }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => setEditOpen(false)} disabled={editing}>
+            <Button variant="secondary" icon={<IconX />} onClick={() => setEditOpen(false)} disabled={editing}>
               Cancelar
-            </button>
-            <button
-              className="sf-btn sf-btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={editing}
               disabled={editing || !editId}
               onClick={async () => {
                 if (!accessToken || !editId) return
@@ -453,7 +459,7 @@ export function TournamentsPage() {
               }}
             >
               {editing ? 'Guardando…' : 'Guardar'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -578,13 +584,6 @@ export function TournamentsPage() {
                     </h2>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <span className="sf-badge sf-badge-blue text-xs">{t.season_year}</span>
-                      <span
-                        className={
-                          'sf-badge text-xs ' + (t.active ? 'sf-badge-emerald' : 'sf-badge-slate')
-                        }
-                      >
-                        {t.active ? 'Activo' : 'Inactivo'}
-                      </span>
                       {matchCount > 0 ? (
                         <span className="text-xs text-slate-500 dark:text-slate-400">
                           {matchCount} partido{matchCount !== 1 ? 's' : ''}
@@ -642,7 +641,9 @@ export function TournamentsPage() {
                         </button>
                       </>
                     ) : (
-                      <Switch checked={!!t.active} onChange={() => {}} disabled size="sm" aria-label={t.active ? 'Activo' : 'Inactivo'} />
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        {t.active ? 'Activo' : 'Inactivo'}
+                      </span>
                     )}
                   </div>
                 </div>

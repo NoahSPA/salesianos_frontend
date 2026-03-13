@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { Button } from '../ui/Button'
+import { IconCheck, IconPlus, IconX } from '../ui/Icons'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
@@ -126,9 +128,9 @@ export function RivalsPage() {
         }
       >
         {canAdmin ? (
-          <button className="sf-btn sf-btn-primary" onClick={openCreate}>
+          <Button variant="primary" icon={<IconPlus />} onClick={openCreate}>
             Nuevo rival
-          </button>
+          </Button>
         ) : null}
       </PageHeader>
 
@@ -139,11 +141,13 @@ export function RivalsPage() {
         onClose={closeModal}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={closeModal} disabled={creating}>
+            <Button variant="secondary" icon={<IconX />} onClick={closeModal} disabled={creating}>
               Cancelar
-            </button>
-            <button
-              className="sf-btn sf-btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={creating}
               disabled={creating}
               onClick={async () => {
                 if (!accessToken) return
@@ -191,7 +195,7 @@ export function RivalsPage() {
               }}
             >
               {creating ? (editingRival ? 'Guardando…' : 'Creando…') : editingRival ? 'Guardar' : 'Crear'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -271,7 +275,10 @@ export function RivalsPage() {
                   <span className="text-xs text-slate-400 dark:text-slate-500">Sin series</span>
                 )}
               </div>
-              <div className="mt-auto flex items-center gap-2 border-t border-slate-100 pt-2 dark:border-slate-600" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="mt-auto flex items-center gap-2 border-t border-slate-100 pt-2 dark:border-slate-600"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <span className="text-xs text-slate-500 dark:text-slate-400">{r.active ? 'Activo' : 'Inactivo'}</span>
                 {canAdmin ? (
                   <Switch
@@ -296,9 +303,7 @@ export function RivalsPage() {
                     aria-label={r.active ? 'Activo (desactivar)' : 'Inactivo (activar)'}
                     size="sm"
                   />
-                ) : (
-                  <Switch checked={!!r.active} onChange={() => {}} disabled size="sm" aria-label={r.active ? 'Activo' : 'Inactivo'} />
-                )}
+                ) : null}
               </div>
             </div>
           ))}

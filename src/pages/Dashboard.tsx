@@ -20,6 +20,22 @@ function IconCalendar(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+function IconClock(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  )
+}
+function IconMapPin(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 21s-6-4.35-6-10a6 6 0 0 1 12 0c0 5.65-6 10-6 10Z" />
+      <circle cx="12" cy="11" r="2.5" />
+    </svg>
+  )
+}
 function IconChevronRight(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -119,19 +135,31 @@ function greeting(): string {
   return 'Buenas noches'
 }
 
-function formatMatchDate(d: string): string {
+function getCalendarParts(d: string): { dow: string; day: string; month: string } {
   try {
     const [y, m, day] = d.split('-').map(Number)
-    return new Date(y, m - 1, day).toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' })
+    const date = new Date(y, m - 1, day)
+    const dowIndex = date.getDay() // 0=Domingo
+    const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'] as const
+    const MONTHS = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'] as const
+    return {
+      dow: WEEKDAYS[dowIndex] ?? '',
+      day: String(day).padStart(2, '0'),
+      month: MONTHS[m - 1] ?? '',
+    }
   } catch {
-    return d
+    return { dow: '', day: d.slice(8, 10) || d, month: '' }
   }
 }
 
 export function DashboardPage() {
   const { accessToken, me } = useAuth()
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const [loadingBase, setLoadingBase] = useState(true)
+  const [loadingFeeStatus, setLoadingFeeStatus] = useState(true)
+  const [loadingTreasury, setLoadingTreasury] = useState(true)
+  const canTreasury = me?.role === 'tesorero' || me?.role === 'admin'
 
   const [matches, setMatches] = useState<Match[]>([])
   const [series, setSeries] = useState<Series[]>([])
@@ -147,8 +175,6 @@ export function DashboardPage() {
 
   const [seriesConvocations, setSeriesConvocations] = useState<SeriesConvocationCard[] | null>(null)
 
-  const canTreasury = me?.role === 'tesorero' || me?.role === 'admin'
-
   useEffect(() => {
     if (!accessToken) return
     const today = new Date()
@@ -157,64 +183,36 @@ export function DashboardPage() {
     const dd = String(today.getDate()).padStart(2, '0')
     const from = `${yyyy}-${mm}-${dd}`
 
-    async function load() {
-      setLoading(true)
-      setError(null)
-      setFeeStatusError(null)
-      setPlayersCountFallback(null)
-      try {
-        const baseCalls: [Promise<Match[]>, Promise<Series[]>, Promise<Tournament[]>] = [
-          apiFetch<Match[]>(`/api/matches?from_date=${encodeURIComponent(from)}`, { authToken: accessToken }),
-          apiFetch<Series[]>('/api/series', { authToken: accessToken }),
-          apiFetch<Tournament[]>('/api/tournaments', { authToken: accessToken }),
-        ]
+    setError(null)
+    setFeeStatusError(null)
+    setPlayersCountFallback(null)
 
-        const treasuryCalls: Promise<unknown>[] = []
-        if (canTreasury) {
-          treasuryCalls.push(
-            apiFetch<FeeSummary>('/api/fees/summary-by-period', { authToken: accessToken }).then(setFeeSummary).catch(() => setFeeSummary(null)),
-            apiFetch<{ id: string }[]>('/api/payments?status=pending_validation&limit=500', { authToken: accessToken })
-              .then((list) => setPendingPaymentsCount(Array.isArray(list) ? list.length : 0))
-              .catch(() => setPendingPaymentsCount(0)),
-          )
-        }
-
-        const [ms, ss, ts] = await Promise.all(baseCalls)
-        await Promise.all(treasuryCalls)
-
+    // Base: partidos, series, torneos (en paralelo; error solo si falla base)
+    setLoadingBase(true)
+    Promise.all([
+      apiFetch<Match[]>(`/api/matches?from_date=${encodeURIComponent(from)}`, { authToken: accessToken }),
+      apiFetch<Series[]>('/api/series', { authToken: accessToken }),
+      apiFetch<Tournament[]>('/api/tournaments', { authToken: accessToken }),
+    ])
+      .then(([ms, ss, ts]) => {
         const sorted = [...ms].sort((a, b) => a.match_date.localeCompare(b.match_date) || a.call_time.localeCompare(b.call_time))
         setMatches(sorted)
         setSeries(ss)
         setTournaments(ts)
+        setError(null)
 
-        try {
-          const fs = await apiFetch<PlayerFeeStatus[]>('/api/fees/status?active=true', { authToken: accessToken })
-          setFeeStatus(fs)
-        } catch (e: unknown) {
-          setFeeStatus(null)
-          setFeeStatusError(e instanceof Error ? e.message : 'Sin permiso o error al cargar cuotas')
-          // Rol jugador no tiene permiso a fees/status: usar lista de jugadores para el conteo del dashboard
-          try {
-            const list = await apiFetch<{ id: string }[]>('/api/players?active=true', { authToken: accessToken })
-            setPlayersCountFallback(Array.isArray(list) ? list.length : 0)
-          } catch {
-            setPlayersCountFallback(0)
-          }
-        }
-
+        // Convocatorias dependen de base; se lanzan al tener series y partidos
         const activeSeries = ss.filter((x) => x.active)
         const firstMatchBySeries = new Map<string, Match>()
         for (const m of sorted) {
           if (!firstMatchBySeries.has(m.series_id)) firstMatchBySeries.set(m.series_id, m)
         }
-
         const cardsBase: SeriesConvocationCard[] = activeSeries.map((s) => ({
           series_id: s.id,
           series_name: s.name,
           match: firstMatchBySeries.get(s.id),
         }))
-
-        const cards: SeriesConvocationCard[] = await Promise.all(
+        Promise.all(
           cardsBase.map(async (c) => {
             if (!c.match) return c
             try {
@@ -225,16 +223,39 @@ export function DashboardPage() {
               return { ...c, error: e instanceof Error ? e.message : 'No hay convocatoria o no se pudo cargar' }
             }
           }),
-        )
-        setSeriesConvocations(cards)
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
-      } finally {
-        setLoading(false)
-      }
-    }
+        ).then(setSeriesConvocations)
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES))
+      .finally(() => setLoadingBase(false))
 
-    load()
+    // Estado de cuotas (en paralelo con el resto)
+    setLoadingFeeStatus(true)
+    apiFetch<PlayerFeeStatus[]>('/api/fees/status?active=true', { authToken: accessToken })
+      .then(setFeeStatus)
+      .catch(async (e: unknown) => {
+        setFeeStatus(null)
+        setFeeStatusError(e instanceof Error ? e.message : 'Sin permiso o error al cargar cuotas')
+        try {
+          const list = await apiFetch<{ id: string }[]>('/api/players?active=true', { authToken: accessToken })
+          setPlayersCountFallback(Array.isArray(list) ? list.length : 0)
+        } catch {
+          setPlayersCountFallback(0)
+        }
+      })
+      .finally(() => setLoadingFeeStatus(false))
+
+    // Tesorería (en paralelo; solo si puede ver)
+    if (canTreasury) {
+      setLoadingTreasury(true)
+      Promise.all([
+        apiFetch<FeeSummary>('/api/fees/summary-by-period', { authToken: accessToken }).then(setFeeSummary).catch(() => setFeeSummary(null)),
+        apiFetch<{ id: string }[]>('/api/payments?status=pending_validation&limit=500', { authToken: accessToken })
+          .then((list) => setPendingPaymentsCount(Array.isArray(list) ? list.length : 0))
+          .catch(() => setPendingPaymentsCount(0)),
+      ]).finally(() => setLoadingTreasury(false))
+    } else {
+      setLoadingTreasury(false)
+    }
   }, [accessToken, canTreasury])
 
   const seriesById = useMemo(() => Object.fromEntries(series.map((s) => [s.id, s])), [series])
@@ -251,17 +272,6 @@ export function DashboardPage() {
     feeStatus !== null ? feeCounts.al_dia + feeCounts.pendiente + feeCounts.atrasado : (playersCountFallback ?? 0)
   const pct = (n: number) => (totalPlayers ? Math.round((n / totalPlayers) * 100) : 0)
 
-  /** Próximo partido a jugar por serie (el más cercano por cada serie) */
-  const nextMatches = useMemo(() => {
-    const seen = new Set<string>()
-    const onePerSeries: Match[] = []
-    for (const m of matches) {
-      if (seen.has(m.series_id)) continue
-      seen.add(m.series_id)
-      onePerSeries.push(m)
-    }
-    return onePerSeries
-  }, [matches])
   const activeSeriesCount = useMemo(() => series.filter((s) => s.active).length, [series])
   const activeTournamentsCount = useMemo(() => tournaments.filter((t) => t.active).length, [tournaments])
 
@@ -276,18 +286,8 @@ export function DashboardPage() {
     )
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4">
-        <div className="sf-loading-spinner" role="status" aria-label="Cargando dashboard" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">Cargando información del equipo…</p>
-      </div>
-    )
-  }
-
   return (
     <div className="mx-auto max-w-7xl space-y-8 pb-8">
-      {/* Cabecera */}
       <header className="border-b border-slate-200 pb-6 dark:border-slate-700">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           {greeting()}, {me?.username}
@@ -297,13 +297,13 @@ export function DashboardPage() {
         </p>
       </header>
 
-      {/* KPIs */}
+      {/* KPIs: cada caja con skeleton o dato */}
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         <div className="sf-card overflow-hidden p-5 transition-shadow hover:shadow-md">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Jugadores activos</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{totalPlayers}</p>
+              {loadingFeeStatus ? <div className="mt-1 h-8 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden /> : <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{totalPlayers}</p>}
             </div>
             <div className="rounded-lg bg-primary/10 p-2.5">
               <IconUsers className="h-6 w-6 text-primary" aria-hidden />
@@ -318,7 +318,7 @@ export function DashboardPage() {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Próximos partidos</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{matches.length}</p>
+              {loadingBase ? <div className="mt-1 h-8 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden /> : <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{matches.length}</p>}
             </div>
             <div className="rounded-lg bg-blue-100 p-2.5 dark:bg-blue-900/30">
               <IconCalendar className="h-6 w-6 text-blue-600 dark:text-blue-400" aria-hidden />
@@ -335,9 +335,7 @@ export function DashboardPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Recaudación total</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100 sm:text-2xl">
-                    {feeSummary ? formatClp(feeSummary.total_collected) : '—'}
-                  </p>
+                  {loadingTreasury ? <div className="mt-1 h-8 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden /> : <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100 sm:text-2xl">{feeSummary ? formatClp(feeSummary.total_collected) : '—'}</p>}
                 </div>
                 <div className="rounded-lg bg-emerald-100 p-2.5 dark:bg-emerald-900/30">
                   <IconDollarSign className="h-6 w-6 text-emerald-600 dark:text-emerald-400" aria-hidden />
@@ -352,7 +350,7 @@ export function DashboardPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Pagos por validar</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{pendingPaymentsCount}</p>
+                  {loadingTreasury ? <div className="mt-1 h-8 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden /> : <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{pendingPaymentsCount}</p>}
                 </div>
                 <div className="rounded-lg bg-amber-100 p-2.5 dark:bg-amber-900/30">
                   <IconFileCheck className="h-6 w-6 text-amber-600 dark:text-amber-400" aria-hidden />
@@ -369,7 +367,7 @@ export function DashboardPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Series activas</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{activeSeriesCount}</p>
+                  {loadingBase ? <div className="mt-1 h-8 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden /> : <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{activeSeriesCount}</p>}
                 </div>
                 <div className="rounded-lg bg-violet-100 p-2.5 dark:bg-violet-900/30">
                   <IconTrophy className="h-6 w-6 text-violet-600 dark:text-violet-400" aria-hidden />
@@ -384,7 +382,7 @@ export function DashboardPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Torneos activos</p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{activeTournamentsCount}</p>
+                  {loadingBase ? <div className="mt-1 h-8 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden /> : <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{activeTournamentsCount}</p>}
                 </div>
                 <div className="rounded-lg bg-cyan-100 p-2.5 dark:bg-cyan-900/30">
                   <IconTrophy className="h-6 w-6 text-cyan-600 dark:text-cyan-400" aria-hidden />
@@ -398,8 +396,8 @@ export function DashboardPage() {
         )}
       </section>
 
-      {/* Estado de cuotas (si hay datos) */}
-      {feeStatus && (
+      {/* Estado de cuotas */}
+      {(loadingFeeStatus || feeStatus) && (
         <section className="sf-card p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Estado de cuotas</h2>
@@ -410,27 +408,31 @@ export function DashboardPage() {
           <div className="mt-4 grid grid-cols-3 gap-4 sm:max-w-md">
             <div className="rounded-xl bg-emerald-50 px-4 py-3 text-center dark:bg-emerald-900/20">
               <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Al día</p>
-              <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{feeCounts.al_dia}</p>
+              {loadingFeeStatus ? <div className="mx-auto mt-1 h-8 w-10 animate-pulse rounded bg-emerald-200 dark:bg-emerald-800" aria-hidden /> : <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{feeCounts.al_dia}</p>}
             </div>
             <div className="rounded-xl bg-amber-50 px-4 py-3 text-center dark:bg-amber-900/20">
               <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">Pendiente</p>
-              <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">{feeCounts.pendiente}</p>
+              {loadingFeeStatus ? <div className="mx-auto mt-1 h-8 w-10 animate-pulse rounded bg-amber-200 dark:bg-amber-800" aria-hidden /> : <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">{feeCounts.pendiente}</p>}
             </div>
             <div className="rounded-xl bg-rose-50 px-4 py-3 text-center dark:bg-rose-900/20">
               <p className="text-xs font-medium uppercase tracking-wide text-rose-700 dark:text-rose-300">Atrasado</p>
-              <p className="text-2xl font-bold text-rose-900 dark:text-rose-100">{feeCounts.atrasado}</p>
+              {loadingFeeStatus ? <div className="mx-auto mt-1 h-8 w-10 animate-pulse rounded bg-rose-200 dark:bg-rose-800" aria-hidden /> : <p className="text-2xl font-bold text-rose-900 dark:text-rose-100">{feeCounts.atrasado}</p>}
             </div>
           </div>
           <div className="mt-4">
             <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-600">
-              <div className="flex h-full">
-                <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct(feeCounts.al_dia)}%` }} />
-                <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct(feeCounts.pendiente)}%` }} />
-                <div className="h-full bg-rose-500 transition-all" style={{ width: `${pct(feeCounts.atrasado)}%` }} />
-              </div>
+              {loadingFeeStatus ? (
+                <div className="h-full w-2/3 animate-pulse rounded-full bg-slate-300 dark:bg-slate-500" aria-hidden />
+              ) : (
+                <div className="flex h-full">
+                  <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct(feeCounts.al_dia)}%` }} />
+                  <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct(feeCounts.pendiente)}%` }} />
+                  <div className="h-full bg-rose-500 transition-all" style={{ width: `${pct(feeCounts.atrasado)}%` }} />
+                </div>
+              )}
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              {totalPlayers} jugadores con cuota asignada
+              {loadingFeeStatus ? <span className="inline-block h-4 w-40 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden /> : `${totalPlayers} jugadores con cuota asignada`}
             </p>
           </div>
         </section>
@@ -439,28 +441,44 @@ export function DashboardPage() {
         <p className="text-sm text-slate-500 dark:text-slate-400">{feeStatusError}</p>
       )}
 
-      {/* Tesorería resumida (solo si puede ver y hay summary) */}
-      {canTreasury && feeSummary && (
+      {/* Tesorería resumida (solo si puede ver) */}
+      {canTreasury && (
         <section className="grid gap-4 sm:grid-cols-2">
           <div className="sf-card p-5">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Resumen tesorería</h2>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-              <div>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Recaudado</p>
-                <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{formatClp(feeSummary.total_collected)}</p>
+            {loadingTreasury ? (
+              <div className="mt-4 space-y-3" aria-hidden>
+                <div className="h-6 w-28 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                <div className="h-6 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
               </div>
-              <div>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Pendiente de cobro</p>
-                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{formatClp(feeSummary.total_pending)}</p>
+            ) : (
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+                <div>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Recaudado</p>
+                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{feeSummary ? formatClp(feeSummary.total_collected) : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Pendiente de cobro</p>
+                  <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{feeSummary ? formatClp(feeSummary.total_pending) : '—'}</p>
+                </div>
               </div>
-            </div>
+            )}
             <Link to="/treasury" className="mt-4 inline-flex items-center text-sm font-medium text-primary hover:underline">
               Ver tesorería completa <IconChevronRight className="ml-0.5 h-4 w-4" />
             </Link>
           </div>
-          {feeSummary.collection_by_series && feeSummary.collection_by_series.length > 0 && (
-            <div className="sf-card p-5">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Recaudación por serie</h2>
+          <div className="sf-card p-5">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Recaudación por serie</h2>
+            {loadingTreasury ? (
+              <ul className="mt-3 space-y-2" aria-hidden>
+                {[1, 2, 3, 4].map((i) => (
+                  <li key={i} className="flex justify-between gap-2">
+                    <div className="h-4 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-4 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                  </li>
+                ))}
+              </ul>
+            ) : feeSummary?.collection_by_series && feeSummary.collection_by_series.length > 0 ? (
               <ul className="mt-3 space-y-2">
                 {feeSummary.collection_by_series.slice(0, 5).map((row) => (
                   <li key={row.series_id} className="flex items-center justify-between gap-2 text-sm">
@@ -474,126 +492,157 @@ export function DashboardPage() {
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
+            ) : (
+              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Sin datos</p>
+            )}
+          </div>
         </section>
       )}
 
       {/* Próximos partidos + Convocatorias */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="sf-card p-5 lg:col-span-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Próximos partidos</h2>
-            <Link to="/matches" className="text-sm font-medium text-primary hover:underline">
-              Ver todos
-            </Link>
-          </div>
-          {nextMatches.length === 0 ? (
-            <p className="mt-4 text-slate-500 dark:text-slate-400">No hay partidos programados desde hoy.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {nextMatches.map((m) => {
-                const s = seriesById[m.series_id]
-                const t = tournamentById[m.tournament_id]
-                return (
-                  <li key={m.id}>
-                    <Link
-                      to={`/matches/${m.id}`}
-                      className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 p-4 transition-colors hover:border-primary/30 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700/50"
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <div className="rounded-lg bg-slate-100 px-3 py-2 text-center dark:bg-slate-700">
-                          <span className="block text-xs font-medium uppercase text-slate-500 dark:text-slate-400">
-                            {formatMatchDate(m.match_date).split(' ')[0]}
-                          </span>
-                          <span className="block text-sm font-bold text-slate-900 dark:text-slate-100">
-                            {m.match_date.slice(8, 10)}
-                          </span>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900 dark:text-slate-100">vs {m.opponent}</p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            {m.venue}
-                            {m.field_number ? ` · Cancha ${m.field_number}` : ''} · Citación {m.call_time}
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            {s && <SeriesBadge seriesId={m.series_id} name={s.name} color={s.color} />}
-                            {t && <span className="text-xs text-slate-500 dark:text-slate-400">{t.name} {t.season_year}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <IconChevronRight className="h-5 w-5 shrink-0 text-slate-400" />
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+      <section className="sf-card p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Próximos partidos y convocatorias</h2>
+          <Link to="/matches" className="sf-btn sf-btn-ghost px-3 py-1.5 text-sm font-medium">
+            Ver todos los partidos
+          </Link>
         </div>
-
-        <div className="sf-card p-5 lg:col-span-2">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Convocatorias por serie</h2>
-          {!seriesConvocations ? (
-            <div className="mt-4 flex justify-center py-6">
-              <div className="sf-loading-spinner h-8 w-8" role="status" aria-label="Cargando" />
-            </div>
-          ) : seriesConvocations.length === 0 ? (
-            <p className="mt-4 text-slate-500 dark:text-slate-400">No hay series activas.</p>
-          ) : (
-            <ul className="mt-4 space-y-4">
-              {seriesConvocations.map((c) => {
-                const m = c.match
-                const st = c.status
-                const serie = seriesById[c.series_id]
-                return (
-                  <li key={c.series_id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-600">
-                    <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <SeriesBadge seriesId={c.series_id} name={c.series_name || serie?.name} color={serie?.color} />
-                        </div>
-                        {m ? (
-                          <>
-                            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-                              Próximo: <Link to={`/matches/${m.id}`} className="font-medium text-primary hover:underline">vs {m.opponent}</Link>
-                            </p>
-                            <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{formatMatchDate(m.match_date)} · {m.call_time}</p>
-                          </>
-                        ) : (
-                          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Sin partido próximo</p>
-                        )}
+        {!seriesConvocations ? (
+          <ul className="mt-4 space-y-4" aria-hidden>
+            {[1, 2, 3].map((i) => (
+              <li key={i} className="flex gap-4 rounded-lg border border-slate-200 p-4 dark:border-slate-600">
+                <div className="h-14 w-14 shrink-0 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-700" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="h-4 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                  <div className="h-3 w-48 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                  <div className="flex gap-3">
+                    <div className="h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                    <div className="h-3 w-28 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : seriesConvocations.length === 0 ? (
+          <p className="mt-4 text-slate-500 dark:text-slate-400">No hay series activas.</p>
+        ) : (
+          <ul className="mt-4 space-y-4">
+            {seriesConvocations.map((c) => {
+              const m = c.match
+              const st = c.status
+              const serie = seriesById[c.series_id]
+              const calendar = m ? getCalendarParts(m.match_date) : null
+              const torneo = m ? tournamentById[m.tournament_id] : undefined
+              const content = (
+                <>
+                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                    {calendar ? (
+                      <div className="rounded-lg bg-slate-100 px-3 py-2 text-center leading-tight dark:bg-slate-700">
+                        <span className="block text-[10px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
+                          {calendar.dow}
+                        </span>
+                        <span className="block text-lg font-bold text-slate-900 dark:text-slate-100">
+                          {calendar.day}
+                        </span>
+                        <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-300">
+                          {calendar.month}
+                        </span>
                       </div>
-                      {st && (
-                        <div className="flex flex-shrink-0 flex-col items-end gap-1 sm:flex-row sm:justify-end">
-                          <span className="sf-badge sf-badge-emerald inline-flex min-w-[2.5rem] justify-center">{st.confirmed_count} ✓</span>
-                          <span className="sf-badge sf-badge-amber inline-flex min-w-[2.5rem] justify-center">{st.pending_count} ?</span>
-                          <span className="sf-badge sf-badge-rose inline-flex min-w-[2.5rem] justify-center">{st.declined_count} ✗</span>
-                        </div>
+                    ) : (
+                      <div className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                        Sin fecha
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <SeriesBadge seriesId={c.series_id} name={c.series_name || serie?.name} color={serie?.color} />
+                      </div>
+                      {m ? (
+                        <>
+                          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                            Próximo: <span className="font-medium text-primary">vs {m.opponent}</span>
+                          </p>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                            <span className="inline-flex items-center gap-1">
+                              <IconClock className="h-3.5 w-3.5" aria-hidden />
+                              <span>Citación {m.call_time}</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <IconMapPin className="h-3.5 w-3.5" aria-hidden />
+                              <span>
+                                {m.venue}
+                                {m.field_number ? ` Cancha ${m.field_number}` : ''}
+                              </span>
+                            </span>
+                            {torneo && (
+                              <span className="inline-flex items-center gap-1">
+                                <IconTrophy className="h-3.5 w-3.5" aria-hidden />
+                                <span>
+                                  {torneo.name} {torneo.season_year}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Sin partido próximo</p>
                       )}
                     </div>
-                    {m && st && st.confirmed_count > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {st.lines
-                          .filter((l) => l.status === 'confirmed')
-                          .slice(0, 6)
-                          .map((l) => (
-                            <span key={l.player_id} className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700 dark:bg-slate-700 dark:text-slate-300">
-                              {l.player_name}
-                            </span>
-                          ))}
-                        {st.confirmed_count > 6 && <span className="text-xs text-slate-500">+{st.confirmed_count - 6}</span>}
+                    {st && (
+                      <div className="flex flex-shrink-0 flex-col items-end gap-1 sm:flex-row sm:justify-end">
+                        <span className="sf-badge sf-badge-emerald inline-flex min-w-[2.5rem] justify-center">
+                          {st.confirmed_count} ✓
+                        </span>
+                        <span className="sf-badge sf-badge-amber inline-flex min-w-[2.5rem] justify-center">
+                          {st.pending_count} ?
+                        </span>
+                        <span className="sf-badge sf-badge-rose inline-flex min-w-[2.5rem] justify-center">
+                          {st.declined_count} ✗
+                        </span>
                       </div>
                     )}
-                    {m && !st && c.error && (
-                      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{c.error}</p>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-      </div>
+                  </div>
+                  {m && st && st.confirmed_count > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {st.lines
+                        .filter((l) => l.status === 'confirmed')
+                        .slice(0, 6)
+                        .map((l) => (
+                          <span
+                            key={l.player_id}
+                            className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700 dark:bg-slate-700 dark:text-slate-300"
+                          >
+                            {l.player_name}
+                          </span>
+                        ))}
+                      {st.confirmed_count > 6 && (
+                        <span className="text-xs text-slate-500">+{st.confirmed_count - 6}</span>
+                      )}
+                    </div>
+                  )}
+                  {m && !st && c.error && (
+                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{c.error}</p>
+                  )}
+                </>
+              )
+              return (
+                <li key={c.series_id}>
+                  {m ? (
+                    <Link
+                      to={`/matches/${m.id}`}
+                      className="block rounded-xl border border-slate-200 p-4 transition-colors hover:border-primary/30 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700/50"
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-600">{content}</div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }

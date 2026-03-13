@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { Clock, Grid, LayoutDashboard, Pencil, Scale, Trash2, Users } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { Button } from '../ui/Button'
+import { IconArrowRight, IconCheck, IconPlus, IconTrash2, IconX } from '../ui/Icons'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
@@ -139,6 +141,10 @@ export function TreasuryPage() {
   const [totalCollected, setTotalCollected] = useState<number>(0)
   const [totalPending, setTotalPending] = useState<number>(0)
   const [dashboardLoading, setDashboardLoading] = useState(true)
+  /** Carga por caja: totales (Recaudado/Pendiente), períodos (tabla), breakdown (por serie/torneo/jugador). */
+  const [loadingTotals, setLoadingTotals] = useState(true)
+  const [loadingPeriods, setLoadingPeriods] = useState(true)
+  const [loadingBreakdown, setLoadingBreakdown] = useState(true)
   const [playerMatrix, setPlayerMatrix] = useState<PlayerPeriodMatrix | null>(null)
   const [copiedPendingSummary, setCopiedPendingSummary] = useState(false)
   const [pendingSummaryOpen, setPendingSummaryOpen] = useState(false)
@@ -182,7 +188,7 @@ export function TreasuryPage() {
     setDashboardLoading(true)
     try {
       // Carga base: pendientes, series, jugadores y reglas.
-      // El resumen y los estados detallados se cargan en efectos específicos (reloadSummary / reloadStatus)
+      // Totales, períodos y breakdown se cargan en paralelo en efectos (reloadTotals / reloadPeriods / reloadBreakdown)
       const [pays, ss, pl, rules] = await Promise.all([
         apiFetch<Payment[]>('/api/payments?status=pending_validation&limit=200', { authToken: accessToken }),
         apiFetch<Series[]>('/api/series', { authToken: accessToken }),
@@ -198,36 +204,52 @@ export function TreasuryPage() {
     }
   }
 
-  async function reloadSummary() {
+  function reloadTotals() {
     if (!accessToken) return
-    setDashboardLoading(true)
-    try {
-      const summary = await apiFetch<{
-        periods: PeriodSummary[]
-        total_collected: number
-        total_pending: number
-        collection_by_series?: CollectionBySeries[]
-        collection_by_tournament?: CollectionByTournament[]
-        collection_by_player?: CollectionByPlayer[]
-      }>(`/api/fees/summary-by-period${seriesId ? `?series_id=${encodeURIComponent(seriesId)}` : ''}`, { authToken: accessToken })
-      if (summary && typeof summary === 'object' && Array.isArray(summary.periods)) {
-        setPeriodSummary(summary.periods)
-        setTotalCollected(summary.total_collected ?? 0)
-        setTotalPending(summary.total_pending ?? 0)
-        setCollectionBySeries(Array.isArray(summary.collection_by_series) ? summary.collection_by_series : [])
-        setCollectionByTournament(Array.isArray(summary.collection_by_tournament) ? summary.collection_by_tournament : [])
-        setCollectionByPlayer(Array.isArray(summary.collection_by_player) ? summary.collection_by_player : [])
-      } else {
-        setPeriodSummary([])
+    setLoadingTotals(true)
+    const qs = seriesId ? `?series_id=${encodeURIComponent(seriesId)}` : ''
+    apiFetch<{ total_collected: number; total_pending: number }>(`/api/fees/dashboard-totals${qs}`, { authToken: accessToken })
+      .then((r) => {
+        setTotalCollected(r?.total_collected ?? 0)
+        setTotalPending(r?.total_pending ?? 0)
+      })
+      .catch(() => {
         setTotalCollected(0)
         setTotalPending(0)
+      })
+      .finally(() => setLoadingTotals(false))
+  }
+
+  function reloadPeriods() {
+    if (!accessToken) return
+    setLoadingPeriods(true)
+    const qs = seriesId ? `?series_id=${encodeURIComponent(seriesId)}` : ''
+    apiFetch<{ periods: PeriodSummary[] }>(`/api/fees/dashboard-periods${qs}`, { authToken: accessToken })
+      .then((r) => setPeriodSummary(Array.isArray(r?.periods) ? r.periods : []))
+      .catch(() => setPeriodSummary([]))
+      .finally(() => setLoadingPeriods(false))
+  }
+
+  function reloadBreakdown() {
+    if (!accessToken) return
+    setLoadingBreakdown(true)
+    const qs = seriesId ? `?series_id=${encodeURIComponent(seriesId)}` : ''
+    apiFetch<{
+      collection_by_series?: CollectionBySeries[]
+      collection_by_tournament?: CollectionByTournament[]
+      collection_by_player?: CollectionByPlayer[]
+    }>(`/api/fees/dashboard-breakdown${qs}`, { authToken: accessToken })
+      .then((r) => {
+        setCollectionBySeries(Array.isArray(r?.collection_by_series) ? r.collection_by_series : [])
+        setCollectionByTournament(Array.isArray(r?.collection_by_tournament) ? r.collection_by_tournament : [])
+        setCollectionByPlayer(Array.isArray(r?.collection_by_player) ? r.collection_by_player : [])
+      })
+      .catch(() => {
         setCollectionBySeries([])
         setCollectionByTournament([])
         setCollectionByPlayer([])
-      }
-    } finally {
-      setDashboardLoading(false)
-    }
+      })
+      .finally(() => setLoadingBreakdown(false))
   }
 
   async function reloadMatrix() {
@@ -268,11 +290,21 @@ export function TreasuryPage() {
     }
   }
 
+  // Carga en paralelo: base (pendientes, series, jugadores, reglas) y resumen (totales, períodos, por serie/torneo/jugador).
+  // Cada bloque muestra datos en cuanto llega su respuesta, sin esperar al otro.
   useEffect(() => {
     if (!accessToken) return
     reloadAll().catch((e: unknown) => setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken])
+
+  useEffect(() => {
+    if (!accessToken) return
+    reloadTotals()
+    reloadPeriods()
+    reloadBreakdown()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, seriesId])
 
   useEffect(() => {
     if (!accessToken || tab !== 'status') return
@@ -285,12 +317,6 @@ export function TreasuryPage() {
     reloadMatrix().catch((e: unknown) => setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, tab, seriesId])
-
-  useEffect(() => {
-    if (!accessToken || tab !== 'dashboard') return
-    reloadSummary().catch((e: unknown) => setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, seriesId])
 
   useEffect(() => {
     if (!accessToken || !registerOpen || !playerId.trim() || !paymentPeriod) {
@@ -365,7 +391,7 @@ export function TreasuryPage() {
     return lines.join('\n')
   }, [pendingSummaryRows])
 
-  if (!canTreasury) return <div className="text-sm text-slate-600 dark:text-slate-400">Sin permiso.</div>
+  if (!canTreasury) return null
 
   function ruleScopeLabel(r: FeeRule) {
     if (r.scope === 'general') return 'General'
@@ -439,8 +465,9 @@ export function TreasuryPage() {
           </div>
         }
       >
-        <button
-          className="sf-btn sf-btn-primary"
+        <Button
+          variant="primary"
+          icon={<IconPlus />}
           onClick={() => {
             setTab('register')
             setRegisterFieldErrors({})
@@ -448,36 +475,35 @@ export function TreasuryPage() {
           }}
         >
           Registrar pago
-        </button>
+        </Button>
       </PageHeader>
 
       {!registerOpen && !rulesOpen && error ? <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200">{error}</div> : null}
 
       {tab === 'dashboard' ? (
         <div className="space-y-3">
-          {dashboardLoading ? (
-            <div className="sf-card flex flex-col items-center justify-center gap-3 p-12">
-              <div className="sf-loading-spinner" role="status" aria-label="Cargando" />
-              <p className="text-sm text-slate-600 dark:text-slate-400">Cargando resumen de tesorería…</p>
-            </div>
-          ) : (
-            <>
-          {/* Wireframe: izquierda ~66% (2 cards arriba + Resumen grande); derecha ~33% (3 cards apiladas, altura al contenido) */}
+          {/* Layout fijo: cada caja con skeleton o datos. Más fluido. */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
-            {/* Columna izquierda */}
             <div className="flex min-w-0 flex-col gap-4">
-              {/* Fila superior: Recaudado + Pendiente */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="sf-card flex h-32 flex-col justify-center p-4">
                   <div className="text-sm font-medium text-slate-600 dark:text-slate-400">Recaudado</div>
-                  <div className="text-xl font-semibold text-emerald-700">{clp(totalCollected)}</div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Suma de todos los pagos validados</p>
+                  {loadingTotals ? (
+                    <div className="mt-1 h-7 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden />
+                  ) : (
+                    <div className="text-xl font-semibold text-emerald-700">{clp(totalCollected)}</div>
+                  )}
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Suma de todos los pagos validados</p>
                 </div>
                 <div className="sf-card flex min-h-32 flex-col justify-center p-4">
                   <div className="text-sm font-medium text-slate-600 dark:text-slate-400">Pendiente</div>
-                  <div className="text-xl font-semibold text-amber-700">{clp(totalPending)}</div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Suma de lo que tiene que ser pagado (cuotas hasta el mes actual)</p>
-                  {totalPending === 0 && feeRules.length > 0 ? (
+                  {loadingTotals ? (
+                    <div className="mt-1 h-7 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden />
+                  ) : (
+                    <div className="text-xl font-semibold text-amber-700">{clp(totalPending)}</div>
+                  )}
+                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Suma de lo que tiene que ser pagado (cuotas hasta el mes actual)</p>
+                  {!loadingTotals && totalPending === 0 && feeRules.length > 0 ? (
                     <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-300/90">
                       Si esperas deuda: revisa que la regla de cuota esté <strong>vigente desde el primer mes</strong> (ej. 2026-01-01) y que los jugadores tengan esa serie.
                     </p>
@@ -485,19 +511,23 @@ export function TreasuryPage() {
                 </div>
               </div>
 
-              {pending.length > 0 ? (
+              {dashboardLoading ? (
+                <div className="sf-card flex h-16 items-center p-4">
+                  <div className="h-4 w-48 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden />
+                </div>
+              ) : pending.length > 0 ? (
                 <div className="sf-card flex items-center justify-between p-4">
                   <div>
                     <div className="font-medium">Pagos por validar</div>
                     <div className="text-sm text-slate-600 dark:text-slate-400">{pending.length} pagos · {clp(pendingTotal)}</div>
                   </div>
-                  <button className="sf-btn sf-btn-secondary" onClick={() => setTab('pending')}>
+                  <Button variant="secondary" icon={<IconArrowRight />} onClick={() => setTab('pending')}>
                     Ir a pendientes
-                  </button>
+                  </Button>
                 </div>
               ) : null}
 
-              {/* Resumen por período — panel grande */}
+              {/* Resumen por período */}
               <div className="sf-card min-h-[320px] min-w-0 flex-1 overflow-hidden">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   Resumen por período
@@ -505,7 +535,18 @@ export function TreasuryPage() {
                 <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
                   Solo meses pasados y actuales. Al día = todos los jugadores pagaron su cuota.
                 </p>
-                {(periodSummary?.length ?? 0) === 0 ? (
+                {loadingPeriods ? (
+                  <div className="p-4 space-y-2" aria-hidden>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="flex gap-4">
+                        <div className="h-5 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                        <div className="h-5 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                        <div className="h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700 ml-auto" />
+                        <div className="h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (periodSummary?.length ?? 0) === 0 ? (
                   <div className="p-6 text-sm text-slate-600 dark:text-slate-400">
                     No hay períodos con cargos. Las cuotas se generan automáticamente al consultar.
                   </div>
@@ -550,14 +591,20 @@ export function TreasuryPage() {
               </div>
             </div>
 
-            {/* Columna derecha: 3 cards apiladas, altura al contenido (serie y torneo compactas; jugador con scroll si hay muchos) */}
+            {/* Columna derecha: 3 cajas */}
             <div className="flex flex-col gap-4">
               <div className="sf-card overflow-hidden">
                 <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   Recaudación por serie
                 </div>
                 <div className="overflow-y-auto">
-                  {collectionBySeries.length === 0 ? (
+                  {loadingBreakdown ? (
+                    <div className="p-3 space-y-2" aria-hidden>
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-5 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                      ))}
+                    </div>
+                  ) : collectionBySeries.length === 0 ? (
                     <p className="p-3 text-xs text-slate-500 dark:text-slate-400">Sin datos</p>
                   ) : (
                     <table className="w-full text-sm">
@@ -584,7 +631,13 @@ export function TreasuryPage() {
                   Recaudación por torneo
                 </div>
                 <div className="overflow-y-auto">
-                  {collectionByTournament.length === 0 ? (
+                  {loadingBreakdown ? (
+                    <div className="p-3 space-y-2" aria-hidden>
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-5 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                      ))}
+                    </div>
+                  ) : collectionByTournament.length === 0 ? (
                     <p className="p-3 text-xs text-slate-500 dark:text-slate-400">Sin datos</p>
                   ) : (
                     <table className="w-full text-sm">
@@ -624,7 +677,13 @@ export function TreasuryPage() {
                   Recaudación por jugador
                 </div>
                 <div className="max-h-52 overflow-y-auto">
-                  {collectionByPlayer.length === 0 ? (
+                  {loadingBreakdown ? (
+                    <div className="p-3 space-y-2" aria-hidden>
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="h-5 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                      ))}
+                    </div>
+                  ) : collectionByPlayer.length === 0 ? (
                     <p className="p-3 text-xs text-slate-500 dark:text-slate-400">Sin datos</p>
                   ) : (
                     <table className="w-full text-sm">
@@ -638,7 +697,7 @@ export function TreasuryPage() {
                       </tbody>
                     </table>
                   )}
-                  {collectionByPlayer.length > 15 ? (
+                  {!loadingBreakdown && collectionByPlayer.length > 15 ? (
                     <p className="border-t border-slate-100 px-3 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
                       y {collectionByPlayer.length - 15} más
                     </p>
@@ -647,8 +706,6 @@ export function TreasuryPage() {
               </div>
             </div>
           </div>
-            </>
-          )}
         </div>
       ) : null}
 
@@ -660,17 +717,14 @@ export function TreasuryPage() {
         }}
         footer={
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              className="sf-btn sf-btn-secondary"
-              onClick={() => setPendingSummaryOpen(false)}
-            >
+            <Button type="button" variant="secondary" icon={<IconX />} onClick={() => setPendingSummaryOpen(false)}>
               Cerrar
-            </button>
+            </Button>
             {pendingSummaryRows.length > 0 ? (
-              <button
+              <Button
                 type="button"
-                className="sf-btn sf-btn-primary"
+                variant="primary"
+                icon={<IconCheck />}
                 onClick={async () => {
                   try {
                     if ('clipboard' in navigator && pendingSummaryText) {
@@ -684,7 +738,7 @@ export function TreasuryPage() {
                 }}
               >
                 {copiedPendingSummary ? 'Copiado' : 'Copiar para pegar en grupo'}
-              </button>
+              </Button>
             ) : null}
           </div>
         }
@@ -749,24 +803,26 @@ export function TreasuryPage() {
                 {p.transfer_ref ? <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">Ref: {p.transfer_ref}</div> : null}
                 {p.notes_player ? <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">Nota jugador: {p.notes_player}</div> : null}
                 <div className="mt-3 flex gap-2">
-                  <button
-                    className="sf-btn sf-btn-primary"
+                  <Button
+                    variant="primary"
+                    icon={<IconCheck />}
                     onClick={() => {
                       setActionModal({ payment: p, action: 'validate' })
                       setNotesTreasurer('')
                     }}
                   >
                     Validar
-                  </button>
-                  <button
-                    className="sf-btn sf-btn-secondary"
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    icon={<IconX />}
                     onClick={() => {
                       setActionModal({ payment: p, action: 'reject' })
                       setNotesTreasurer('')
                     }}
                   >
                     Rechazar
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))
@@ -780,9 +836,11 @@ export function TreasuryPage() {
         onClose={() => { if (!actionModalLoading) setActionModal(null) }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => setActionModal(null)} disabled={actionModalLoading}>Cancelar</button>
-            <button
-              className="sf-btn sf-btn-primary inline-flex items-center justify-center gap-2"
+            <Button variant="secondary" icon={<IconX />} onClick={() => setActionModal(null)} disabled={actionModalLoading}>Cancelar</Button>
+            <Button
+              variant="primary"
+              icon={actionModal?.action === 'validate' ? <IconCheck /> : <IconX />}
+              loading={actionModalLoading}
               disabled={actionModalLoading}
               onClick={async () => {
                 if (!accessToken || !actionModal) return
@@ -796,6 +854,9 @@ export function TreasuryPage() {
                     body: JSON.stringify({ notes_treasurer: notesTreasurer.trim() || null }),
                   })
                   await reloadAll()
+                  reloadTotals()
+                  reloadPeriods()
+                  reloadBreakdown()
                   setActionModal(null)
                 } catch (e: unknown) {
                   setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
@@ -804,15 +865,8 @@ export function TreasuryPage() {
                 }
               }}
             >
-              {actionModalLoading ? (
-                <>
-                  <span className="sf-loading-spinner sf-loading-spinner-sm inline-block shrink-0" role="status" aria-label="Procesando" />
-                  {actionModal?.action === 'validate' ? 'Validando…' : 'Rechazando…'}
-                </>
-              ) : (
-                actionModal?.action === 'validate' ? 'Validar' : 'Rechazar'
-              )}
-            </button>
+              {actionModalLoading ? (actionModal?.action === 'validate' ? 'Validando…' : 'Rechazando…') : (actionModal?.action === 'validate' ? 'Validar' : 'Rechazar')}
+            </Button>
           </div>
         }
       >
@@ -848,9 +902,9 @@ export function TreasuryPage() {
         onClose={() => { if (!unpaidPeriodsLoading) setUnpaidPeriodsData(null) }}
         footer={
           <div className="flex justify-end">
-            <button type="button" className="sf-btn sf-btn-secondary" onClick={() => setUnpaidPeriodsData(null)} disabled={unpaidPeriodsLoading}>
+            <Button type="button" variant="secondary" icon={<IconX />} onClick={() => setUnpaidPeriodsData(null)} disabled={unpaidPeriodsLoading}>
               Cerrar
-            </button>
+            </Button>
           </div>
         }
       >
@@ -902,9 +956,11 @@ export function TreasuryPage() {
         onClose={() => { if (!saving) { setError(null); setRegisterOpen(false) } }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => { setError(null); setRegisterOpen(false) }} disabled={saving}>Cancelar</button>
-            <button
-              className="sf-btn sf-btn-primary inline-flex items-center justify-center gap-2"
+            <Button variant="secondary" icon={<IconX />} onClick={() => { setError(null); setRegisterOpen(false) }} disabled={saving}>Cancelar</Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={saving}
               disabled={saving}
               onClick={async () => {
                 if (!accessToken) return
@@ -937,6 +993,9 @@ export function TreasuryPage() {
                   setTransferRef('')
                   setNotesPlayer('')
                   await reloadAll()
+                  reloadTotals()
+                  reloadPeriods()
+                  reloadBreakdown()
                   setRegisterOpen(false)
                   setTab('pending')
                 } catch (e: unknown) {
@@ -946,15 +1005,8 @@ export function TreasuryPage() {
                 }
               }}
             >
-              {saving ? (
-                <>
-                  <span className="sf-loading-spinner sf-loading-spinner-sm inline-block shrink-0" role="status" aria-label="Guardando" />
-                  Guardando…
-                </>
-              ) : (
-                'Registrar'
-              )}
-            </button>
+              {saving ? 'Guardando…' : 'Registrar'}
+            </Button>
           </div>
         }
       >
@@ -1249,8 +1301,9 @@ export function TreasuryPage() {
             </p>
           </div>
           <div className="flex justify-end">
-            <button
-              className="sf-btn sf-btn-primary"
+            <Button
+              variant="primary"
+              icon={<IconPlus />}
               onClick={() => {
                 setEditingRule(null)
                 setRulesFieldErrors({})
@@ -1263,7 +1316,7 @@ export function TreasuryPage() {
               }}
             >
               Nueva regla
-            </button>
+            </Button>
           </div>
           <div className="space-y-2">
             {feeRules.length === 0 ? (
@@ -1314,9 +1367,11 @@ export function TreasuryPage() {
             onClose={() => { if (!deletingRuleId) setRuleToDelete(null) }}
             footer={
               <div className="flex justify-end gap-2">
-                <button className="sf-btn sf-btn-secondary" onClick={() => setRuleToDelete(null)} disabled={!!deletingRuleId}>Cancelar</button>
-                <button
-                  className="sf-btn bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                <Button variant="secondary" icon={<IconX />} onClick={() => setRuleToDelete(null)} disabled={!!deletingRuleId}>Cancelar</Button>
+                <Button
+                  variant="danger"
+                  icon={<IconTrash2 />}
+                  loading={!!deletingRuleId}
                   disabled={!!deletingRuleId}
                   onClick={async () => {
                     if (!accessToken || !ruleToDelete) return
@@ -1334,7 +1389,7 @@ export function TreasuryPage() {
                   }}
                 >
                   {deletingRuleId ? 'Eliminando…' : 'Eliminar'}
-                </button>
+                </Button>
               </div>
             }
           >
@@ -1351,9 +1406,11 @@ export function TreasuryPage() {
             onClose={() => { setError(null); setRulesOpen(false) }}
             footer={
               <div className="flex justify-end gap-2">
-                <button className="sf-btn sf-btn-secondary" onClick={() => { setError(null); setRulesOpen(false) }}>Cancelar</button>
-                <button
-                  className="sf-btn sf-btn-primary"
+                <Button variant="secondary" icon={<IconX />} onClick={() => { setError(null); setRulesOpen(false) }}>Cancelar</Button>
+                <Button
+                  variant="primary"
+                  icon={<IconCheck />}
+                  loading={saving}
                   disabled={saving}
                   onClick={async () => {
                     if (!accessToken) return
@@ -1403,7 +1460,7 @@ export function TreasuryPage() {
                   }}
                 >
                   {saving ? 'Guardando…' : editingRule ? 'Guardar' : 'Crear'}
-                </button>
+                </Button>
               </div>
             }
           >

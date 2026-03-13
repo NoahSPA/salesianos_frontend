@@ -6,6 +6,8 @@ import { useAuth } from '../app/auth'
 import { useBranding } from '../app/useBranding'
 import { useTheme } from '../app/theme'
 import { InstallPrompt } from '../components/InstallPrompt'
+import { Button } from '../ui/Button'
+import { IconCheck, IconX } from '../ui/Icons'
 import { Modal } from '../ui/Modal'
 
 function IconMoon() {
@@ -174,9 +176,11 @@ export function AppLayout() {
         onClose={() => { if (!changingPassword) setChangePasswordOpen(false) }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => setChangePasswordOpen(false)} disabled={changingPassword}>Cancelar</button>
-            <button
-              className="sf-btn sf-btn-primary"
+            <Button variant="secondary" icon={<IconX />} onClick={() => setChangePasswordOpen(false)} disabled={changingPassword}>Cancelar</Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={changingPassword}
               disabled={changingPassword}
               onClick={async () => {
                 if (!accessToken) return
@@ -209,7 +213,7 @@ export function AppLayout() {
               }}
             >
               {changingPassword ? 'Guardando…' : 'Guardar'}
-            </button>
+            </Button>
           </div>
         }
       >

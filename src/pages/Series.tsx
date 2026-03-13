@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { Button } from '../ui/Button'
+import { IconCheck, IconPlus, IconX } from '../ui/Icons'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
@@ -144,9 +146,9 @@ export function SeriesPage() {
     <div className="space-y-3">
       <PageHeader title="Series">
         {me?.role === 'admin' ? (
-          <button className="sf-btn sf-btn-primary" onClick={() => { setCreateFieldErrors({}); setOpen(true) }}>
+          <Button variant="primary" icon={<IconPlus />} onClick={() => { setCreateFieldErrors({}); setOpen(true) }}>
             Nueva serie
-          </button>
+          </Button>
         ) : null}
       </PageHeader>
 
@@ -160,11 +162,13 @@ export function SeriesPage() {
         }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => setOpen(false)} disabled={creating}>
+            <Button variant="secondary" icon={<IconX />} onClick={() => setOpen(false)} disabled={creating}>
               Cancelar
-            </button>
-            <button
-              className="sf-btn sf-btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={creating}
               disabled={creating}
               onClick={async () => {
                 if (!accessToken) return
@@ -209,7 +213,7 @@ export function SeriesPage() {
               }}
             >
               {creating ? 'Creando…' : 'Crear'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -305,11 +309,13 @@ export function SeriesPage() {
         }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => { setError(null); setEditOpen(false) }} disabled={editing}>
+            <Button variant="secondary" icon={<IconX />} onClick={() => { setError(null); setEditOpen(false) }} disabled={editing}>
               Cancelar
-            </button>
-            <button
-              className="sf-btn sf-btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={editing}
               disabled={editing || !editId}
               onClick={async () => {
                 if (!accessToken || !editId) return
@@ -348,7 +354,7 @@ export function SeriesPage() {
               }}
             >
               {editing ? 'Guardando…' : 'Guardar'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -484,7 +490,9 @@ export function SeriesPage() {
                           size="sm"
                         />
                       ) : (
-                        <Switch checked={!!s.active} onChange={() => {}} disabled size="sm" aria-label={s.active ? 'Activa' : 'Inactiva'} />
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {s.active ? 'Activa' : 'Inactiva'}
+                        </span>
                       )}
                       {me?.role === 'admin' ? (
                         <button

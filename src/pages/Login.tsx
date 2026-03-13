@@ -4,6 +4,8 @@ import { ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { useBranding } from '../app/useBranding'
 import { useTheme } from '../app/theme'
+import { Button } from '../ui/Button'
+import { IconLogIn } from '../ui/Icons'
 
 function IconMoon() {
   return (
@@ -136,12 +138,15 @@ export function LoginPage() {
 
         {error && <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
 
-        <button
-          className="w-full sf-btn sf-btn-primary"
-          disabled={loading}
+        <Button
+          type="submit"
+          variant="primary"
+          icon={<IconLogIn />}
+          loading={loading}
+          className="w-full"
         >
           {loading ? 'Ingresando…' : 'Ingresar'}
-        </button>
+        </Button>
       </form>
     </div>
     </div>

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useBranding } from '../app/useBranding'
+import { Button } from '../ui/Button'
+import { IconDownload } from '../ui/Icons'
 
 const DISMISS_KEY = 'salesianos-install-dismissed'
 
@@ -103,18 +105,15 @@ export function InstallPrompt() {
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {!isIOSDevice && deferredPrompt ? (
-          <button
+          <Button
             type="button"
+            variant="primary"
+            icon={<IconDownload />}
             onClick={handleInstall}
-            className="sf-btn sf-btn-primary inline-flex items-center gap-1.5 px-3 py-2 text-sm"
+            className="text-sm"
           >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
             Instalar
-          </button>
+          </Button>
         ) : null}
         <button
           type="button"

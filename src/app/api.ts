@@ -16,12 +16,19 @@ const TRADUCCIONES_ERROR: Record<string, string> = {
   'ensure this value is less than or equal to': 'El valor debe ser menor o igual',
   'Not Found': 'No encontrado',
   'Unauthorized': 'No autenticado',
-  'Forbidden': 'Sin permiso',
   'Internal Server Error': 'Error del servidor',
 }
 
 function traducirMensaje(texto: string): string {
-  const t = texto?.trim() || ''
+  const raw = texto ?? ''
+  const t = raw.trim()
+
+  // Sin texto: usar mensaje genérico
+  if (!t) return ERROR_MENSAJE_ES
+
+  // Errores de permisos: no mostrar nada en la interfaz
+  if (t === 'Forbidden' || t === 'Sin permiso' || t === 'Sin permiso.') return ''
+
   for (const [en, es] of Object.entries(TRADUCCIONES_ERROR)) {
     if (t === en || t.startsWith(en)) return t === en ? es : es + ': ' + t.slice(en.length).trim()
   }
@@ -112,9 +119,9 @@ export async function apiUpload<T>(
     let msg = ERROR_MENSAJE_ES
     try {
       const d = (await res.json()) as { detail?: string }
-      msg = typeof d?.detail === 'string' ? traducirMensaje(d.detail) : res.statusText
+      msg = typeof d?.detail === 'string' ? traducirMensaje(d.detail) : traducirMensaje(res.statusText)
     } catch {
-      msg = res.statusText
+      msg = traducirMensaje(res.statusText)
     }
     throw new Error(msg)
   }

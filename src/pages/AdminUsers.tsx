@@ -2,6 +2,8 @@ import { Key, UserPlus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { Button } from '../ui/Button'
+import { IconCheck, IconUserPlus, IconX } from '../ui/Icons'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 
@@ -83,14 +85,14 @@ export function AdminUsersPage() {
     [players],
   )
 
-  if (me?.role !== 'admin') return <div className="text-sm text-slate-600 dark:text-slate-400">Sin permiso.</div>
+  if (me?.role !== 'admin') return null
 
   return (
     <div className="space-y-3">
       <PageHeader title="Usuarios">
-        <button className="sf-btn sf-btn-primary" onClick={() => { setFieldErrors({}); setOpen(true) }}>
+        <Button variant="primary" icon={<IconUserPlus />} onClick={() => { setFieldErrors({}); setOpen(true) }}>
           Nuevo usuario
-        </button>
+        </Button>
       </PageHeader>
 
       <Modal
@@ -104,11 +106,13 @@ export function AdminUsersPage() {
         }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => setOpen(false)} disabled={creating}>
+            <Button variant="secondary" icon={<IconX />} onClick={() => setOpen(false)} disabled={creating}>
               Cancelar
-            </button>
-            <button
-              className="sf-btn sf-btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={creating}
               disabled={creating}
               onClick={async () => {
                 if (!accessToken) return
@@ -140,7 +144,7 @@ export function AdminUsersPage() {
               }}
             >
               {creating ? 'Creando…' : 'Crear'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -271,9 +275,11 @@ export function AdminUsersPage() {
         onClose={() => { if (!linking) setLinkModalUser(null) }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => setLinkModalUser(null)} disabled={linking}>Cancelar</button>
-            <button
-              className="sf-btn sf-btn-primary"
+            <Button variant="secondary" icon={<IconX />} onClick={() => setLinkModalUser(null)} disabled={linking}>Cancelar</Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={linking}
               disabled={linking}
               onClick={async () => {
                 if (!accessToken || !linkModalUser) return
@@ -295,7 +301,7 @@ export function AdminUsersPage() {
               }}
             >
               {linking ? 'Guardando…' : 'Guardar'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -326,9 +332,11 @@ export function AdminUsersPage() {
         onClose={() => { if (!settingPassword) setPasswordModalUser(null) }}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={() => setPasswordModalUser(null)} disabled={settingPassword}>Cancelar</button>
-            <button
-              className="sf-btn sf-btn-primary"
+            <Button variant="secondary" icon={<IconX />} onClick={() => setPasswordModalUser(null)} disabled={settingPassword}>Cancelar</Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={settingPassword}
               disabled={settingPassword}
               onClick={async () => {
                 if (!accessToken || !passwordModalUser) return
@@ -358,7 +366,7 @@ export function AdminUsersPage() {
               }}
             >
               {settingPassword ? 'Guardando…' : 'Guardar'}
-            </button>
+            </Button>
           </div>
         }
       >

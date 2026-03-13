@@ -1,14 +1,60 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
+import { IconArrowLeft, IconCheck, IconCopy, IconFileText, IconX } from '../ui/Icons'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { useBranding } from '../app/useBranding'
+import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
 
+function IconClock(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  )
+}
+function IconMapPin(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 21s-6-4.35-6-10a6 6 0 0 1 12 0c0 5.65-6 10-6 10Z" />
+      <circle cx="12" cy="11" r="2.5" />
+    </svg>
+  )
+}
+function IconTrophy(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22" /><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </svg>
+  )
+}
+
+function getCalendarParts(d: string): { dow: string; day: string; month: string } {
+  try {
+    const [y, m, day] = d.split('-').map(Number)
+    const date = new Date(y, m - 1, day)
+    const dowIndex = date.getDay()
+    const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'] as const
+    const MONTHS = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'] as const
+    return {
+      dow: WEEKDAYS[dowIndex] ?? '',
+      day: String(day).padStart(2, '0'),
+      month: MONTHS[m - 1] ?? '',
+    }
+  } catch {
+    return { dow: '', day: '', month: '' }
+  }
+}
+
 type Series = { id: string; name: string; active: boolean; color?: string | null }
+type Tournament = { id: string; name: string; season_year: number; active: boolean }
 
 type Match = {
   id: string
@@ -91,6 +137,7 @@ export function MatchDetailPage() {
   const { appName } = useBranding()
   const [match, setMatch] = useState<Match | null>(null)
   const [series, setSeries] = useState<Series | null>(null)
+  const [tournaments, setTournaments] = useState<Tournament[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [conv, setConv] = useState<Convocation | null>(null)
   const [status, setStatus] = useState<ConvStatus | null>(null)
@@ -109,17 +156,21 @@ export function MatchDetailPage() {
     return `${window.location.origin}/c/${conv.public_link_id}`
   }, [conv])
 
+  const tournamentById = useMemo(() => Object.fromEntries(tournaments.map((t) => [t.id, t])), [tournaments])
+
   async function loadAll() {
     if (!accessToken || !matchId) return
     const m = await apiFetch<Match>(`/api/matches/${matchId}`, { authToken: accessToken })
     setMatch(m)
-    const [pl, seriesList, maybeConv] = await Promise.all([
+    const [pl, seriesList, tournamentsList, maybeConv] = await Promise.all([
       apiFetch<Player[]>(`/api/players?series_id=${encodeURIComponent(m.series_id)}`, { authToken: accessToken }),
       apiFetch<Series[]>('/api/series', { authToken: accessToken }),
+      apiFetch<Tournament[]>('/api/tournaments', { authToken: accessToken }),
       apiFetch<Convocation>(`/api/matches/${matchId}/convocation`, { authToken: accessToken }).catch(() => null as Convocation | null),
     ])
     setPlayers(pl)
     setSeries(seriesList.find((s) => s.id === m.series_id) ?? null)
+    setTournaments(tournamentsList)
     if (maybeConv) {
       setConv(maybeConv)
       const st = await apiFetch<ConvStatus>(`/api/convocations/${maybeConv.id}/status`, { authToken: accessToken })
@@ -244,49 +295,85 @@ export function MatchDetailPage() {
               Editar partido
             </Link>
           ) : null}
-          <Link to="/matches" className="sf-btn sf-btn-secondary">
-            Volver a partidos
-          </Link>
+          <Link to="/matches" className="sf-btn sf-btn-secondary inline-flex items-center gap-2">
+              <IconArrowLeft className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />
+              Volver a partidos
+            </Link>
         </div>
       </PageHeader>
       {/* Cabecera del partido */}
       <div className="sf-card overflow-hidden rounded-xl border border-slate-200 p-3 dark:border-slate-600">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            {series ? (
-              <SeriesBadge seriesId={series.id} name={series.name} color={series.color} />
-            ) : null}
-            <h1 className="mt-2 text-xl font-semibold text-slate-900 dark:text-slate-100">vs {match.opponent}</h1>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-400">
-              <span>{match.match_date} · citación {match.call_time}</span>
-              {(match.venue || match.field_number) ? (
-                <span>
-                  {[match.venue, match.field_number ? `cancha ${match.field_number}` : null].filter(Boolean).join(' · ')}
-                </span>
-              ) : null}
-              {match.our_goals != null && match.opponent_goals != null ? (
-                <>
-                  <span
-                    className={
-                      'font-semibold ' +
-                      (match.our_goals > match.opponent_goals
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : match.our_goals < match.opponent_goals
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : 'text-slate-500 dark:text-slate-400')
-                    }
-                  >
-                    {match.our_goals}-{match.opponent_goals}
-                  </span>
-                  <span className={'sf-badge ' + (match.our_goals > match.opponent_goals ? 'sf-badge-emerald' : match.our_goals < match.opponent_goals ? 'sf-badge-rose' : 'sf-badge-amber')}>
-                    {match.our_goals > match.opponent_goals ? 'Ganado' : match.our_goals < match.opponent_goals ? 'Perdido' : 'Empate'}
-                  </span>
-                </>
-              ) : match.result ? (
-                <span className="font-medium text-slate-800 dark:text-slate-200">Resultado: {match.result}</span>
-              ) : null}
-            </div>
-          </div>
+        <div className="flex flex-wrap items-start gap-4">
+          {(() => {
+            const calendar = getCalendarParts(match.match_date)
+            const torneo = tournamentById[match.tournament_id]
+            return (
+              <>
+                <div className="flex-shrink-0">
+                  <div className="rounded-lg bg-slate-100 px-3 py-2 text-center leading-tight dark:bg-slate-700">
+                    <span className="block text-[10px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
+                      {calendar.dow}
+                    </span>
+                    <span className="block text-lg font-bold text-slate-900 dark:text-slate-100">
+                      {calendar.day}
+                    </span>
+                    <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-300">
+                      {calendar.month}
+                    </span>
+                  </div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  {series ? (
+                    <SeriesBadge seriesId={series.id} name={series.name} color={series.color} />
+                  ) : null}
+                  <h1 className="mt-2 text-xl font-semibold text-slate-900 dark:text-slate-100">vs {match.opponent}</h1>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-slate-600 dark:text-slate-400">
+                    <span className="inline-flex items-center gap-1">
+                      <IconClock className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden />
+                      Citación {match.call_time}
+                    </span>
+                    {(match.venue || match.field_number) ? (
+                      <span className="inline-flex items-center gap-1">
+                        <IconMapPin className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden />
+                        {[match.venue, match.field_number ? `cancha ${match.field_number}` : null].filter(Boolean).join(' · ')}
+                      </span>
+                    ) : null}
+                    {torneo ? (
+                      <span className="inline-flex items-center gap-1">
+                        <IconTrophy className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden />
+                        {torneo.name} {torneo.season_year}
+                      </span>
+                    ) : null}
+                  </div>
+                  {(match.our_goals != null && match.opponent_goals != null) || match.result ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {match.our_goals != null && match.opponent_goals != null ? (
+                        <>
+                          <span
+                            className={
+                              'font-semibold ' +
+                              (match.our_goals > match.opponent_goals
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : match.our_goals < match.opponent_goals
+                                  ? 'text-rose-600 dark:text-rose-400'
+                                  : 'text-slate-500 dark:text-slate-400')
+                            }
+                          >
+                            {match.our_goals}-{match.opponent_goals}
+                          </span>
+                          <span className={'sf-badge ' + (match.our_goals > match.opponent_goals ? 'sf-badge-emerald' : match.our_goals < match.opponent_goals ? 'sf-badge-rose' : 'sf-badge-amber')}>
+                            {match.our_goals > match.opponent_goals ? 'Ganado' : match.our_goals < match.opponent_goals ? 'Perdido' : 'Empate'}
+                          </span>
+                        </>
+                      ) : match.result ? (
+                        <span className="font-medium text-slate-800 dark:text-slate-200">Resultado: {match.result}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )
+          })()}
         </div>
       </div>
 
@@ -348,9 +435,11 @@ export function MatchDetailPage() {
               </div>
             </div>
           </div>
-          <button
-            className="mt-3 sf-btn sf-btn-primary"
-            disabled={savingResult}
+          <Button
+            variant="primary"
+            icon={<IconCheck />}
+            loading={savingResult}
+            className="mt-3"
             onClick={async () => {
               if (!accessToken || !matchId) return
               setSavingResult(true)
@@ -376,7 +465,7 @@ export function MatchDetailPage() {
             }}
           >
             {savingResult ? 'Guardando…' : 'Guardar resultado'}
-          </button>
+          </Button>
           </div>
         {/* Convocatoria (misma caja, en la fila cuando partido jugado) */}
           <div className="sf-card rounded-xl border border-slate-200 p-3 dark:border-slate-600">
@@ -390,32 +479,35 @@ export function MatchDetailPage() {
                 <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
                   Crean o actualizan la convocatoria para generar el link y que confirmen asistencia.
                 </p>
-                <button
-                  className="mt-2 sf-btn sf-btn-primary"
-                disabled={saving || players.length === 0}
-                onClick={async () => {
-                  if (!accessToken || !matchId) return
-                  setSaving(true)
-                  setError(null)
-                  try {
-                    const allPlayerIds = players.map((p) => p.id)
-                    const c = await apiFetch<Convocation>(`/api/matches/${matchId}/convocation`, {
-                      method: 'POST',
-                      authToken: accessToken,
-                      body: JSON.stringify({ invited_player_ids: allPlayerIds }),
-                    })
-                    setConv(c)
-                    const st = await apiFetch<ConvStatus>(`/api/convocations/${c.id}/status`, { authToken: accessToken })
-                    setStatus(st)
-                  } catch (e: unknown) {
-                    setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
-                  } finally {
-                    setSaving(false)
-                  }
-                }}
+                <Button
+                  variant="primary"
+                  icon={<IconCheck />}
+                  loading={saving}
+                  disabled={players.length === 0}
+                  className="mt-2"
+                  onClick={async () => {
+                    if (!accessToken || !matchId) return
+                    setSaving(true)
+                    setError(null)
+                    try {
+                      const allPlayerIds = players.map((p) => p.id)
+                      const c = await apiFetch<Convocation>(`/api/matches/${matchId}/convocation`, {
+                        method: 'POST',
+                        authToken: accessToken,
+                        body: JSON.stringify({ invited_player_ids: allPlayerIds }),
+                      })
+                      setConv(c)
+                      const st = await apiFetch<ConvStatus>(`/api/convocations/${c.id}/status`, { authToken: accessToken })
+                      setStatus(st)
+                    } catch (e: unknown) {
+                      setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
+                    } finally {
+                      setSaving(false)
+                    }
+                  }}
                 >
                   {saving ? 'Guardando…' : conv ? 'Actualizar convocatoria' : 'Crear convocatoria'}
-                </button>
+                </Button>
               </>
             )}
             {conv ? (
@@ -432,18 +524,18 @@ export function MatchDetailPage() {
                     >
                       {publicLink}
                     </a>
-                    <button type="button" className="sf-btn sf-btn-secondary shrink-0 text-sm" onClick={() => publicLink && copyText(publicLink)}>
+                    <Button variant="secondary" icon={<IconCopy />} className="shrink-0 text-sm" onClick={() => publicLink && copyText(publicLink)}>
                       Copiar link
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <a className="sf-btn sf-btn-primary text-sm" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noreferrer">
+                  <a className="sf-btn sf-btn-primary inline-flex items-center gap-2 text-sm" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noreferrer">
                     WhatsApp
                   </a>
-                  <button type="button" className="sf-btn sf-btn-secondary text-sm" onClick={() => setResumenModalOpen(true)}>
+                  <Button variant="secondary" icon={<IconFileText />} className="text-sm" onClick={() => setResumenModalOpen(true)}>
                     Ver resumen
-                  </button>
+                  </Button>
                 </div>
               </>
             ) : null}
@@ -462,9 +554,12 @@ export function MatchDetailPage() {
               <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
                 Crean o actualizan la convocatoria para generar el link y que confirmen asistencia.
               </p>
-              <button
-                className="mt-2 sf-btn sf-btn-primary"
-                disabled={saving || players.length === 0}
+              <Button
+                variant="primary"
+                icon={<IconCheck />}
+                loading={saving}
+                disabled={players.length === 0}
+                className="mt-2"
                 onClick={async () => {
                   if (!accessToken || !matchId) return
                   setSaving(true)
@@ -487,7 +582,7 @@ export function MatchDetailPage() {
                 }}
               >
                 {saving ? 'Guardando…' : conv ? 'Actualizar convocatoria' : 'Crear convocatoria'}
-              </button>
+              </Button>
             </>
           )}
           {conv ? (
@@ -504,18 +599,18 @@ export function MatchDetailPage() {
                   >
                     {publicLink}
                   </a>
-                  <button type="button" className="sf-btn sf-btn-secondary shrink-0 text-sm" onClick={() => publicLink && copyText(publicLink)}>
+                  <Button variant="secondary" icon={<IconCopy />} className="shrink-0 text-sm" onClick={() => publicLink && copyText(publicLink)}>
                     Copiar link
-                  </button>
+                  </Button>
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
-                <a className="sf-btn sf-btn-primary text-sm" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noreferrer">
+                <a className="sf-btn sf-btn-primary inline-flex items-center gap-2 text-sm" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noreferrer">
                   WhatsApp
                 </a>
-                <button type="button" className="sf-btn sf-btn-secondary text-sm" onClick={() => setResumenModalOpen(true)}>
+                <Button variant="secondary" icon={<IconFileText />} className="text-sm" onClick={() => setResumenModalOpen(true)}>
                   Ver resumen
-                </button>
+                </Button>
               </div>
             </>
           ) : null}
@@ -527,9 +622,9 @@ export function MatchDetailPage() {
         title="Enviar recordatorio por WhatsApp"
         onClose={() => setRecordatoriosModalOpen(false)}
         footer={
-          <button type="button" className="sf-btn sf-btn-secondary" onClick={() => setRecordatoriosModalOpen(false)}>
+          <Button variant="secondary" icon={<IconX />} onClick={() => setRecordatoriosModalOpen(false)}>
             Cerrar
-          </button>
+          </Button>
         }
       >
         <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
@@ -565,12 +660,12 @@ export function MatchDetailPage() {
         onClose={() => setResumenModalOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
-            <button type="button" className="sf-btn sf-btn-secondary" onClick={() => setResumenModalOpen(false)}>
+            <Button variant="secondary" icon={<IconX />} onClick={() => setResumenModalOpen(false)}>
               Cerrar
-            </button>
-            <button type="button" className="sf-btn sf-btn-primary" onClick={() => { copyText(whatsappText); setResumenModalOpen(false) }}>
+            </Button>
+            <Button variant="primary" icon={<IconCopy />} onClick={() => { copyText(whatsappText); setResumenModalOpen(false) }}>
               Copiar resumen
-            </button>
+            </Button>
           </div>
         }
       >

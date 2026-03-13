@@ -4,6 +4,8 @@ import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { useBranding } from '../app/useBranding'
+import { Button } from '../ui/Button'
+import { IconCheck, IconClock, IconMapPin, IconPlus, IconTrophy, IconX } from '../ui/Icons'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
@@ -64,6 +66,13 @@ export function MatchesPage() {
   const tournamentOptions = useMemo(() => tournaments.filter((t) => t.active), [tournaments])
   const seriesById = useMemo(() => Object.fromEntries(series.map((s) => [s.id, s])), [series])
   const tournamentById = useMemo(() => Object.fromEntries(tournaments.map((t) => [t.id, t])), [tournaments])
+  /** Al editar, incluir el torneo del partido aunque esté inactivo, para que el select muestre el valor correcto */
+  const tournamentOptionsForForm = useMemo(() => {
+    if (!editingMatch) return tournamentOptions
+    const current = tournamentById[editingMatch.tournament_id]
+    if (!current || tournamentOptions.some((t) => t.id === current.id)) return tournamentOptions
+    return [current, ...tournamentOptions]
+  }, [editingMatch, tournamentById, tournamentOptions])
 
   /** Hoy en YYYY-MM-DD para separar próximos vs jugados */
   const today = useMemo(() => {
@@ -270,11 +279,22 @@ export function MatchesPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-600 dark:border-slate-600 dark:text-slate-400">
-          <span>Citación {m.call_time}</span>
-          {m.field_number ? (
-            <span className="rounded bg-slate-100 px-2 py-0.5 dark:bg-slate-700">Cancha {m.field_number}</span>
+          <span className="inline-flex items-center gap-1.5">
+            <IconClock className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+            Citación {m.call_time}
+          </span>
+          {(m.venue || m.field_number) ? (
+            <span className="inline-flex items-center gap-1.5">
+              <IconMapPin className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+              {[m.venue, m.field_number ? `Cancha ${m.field_number}` : null].filter(Boolean).join(' · ')}
+            </span>
           ) : null}
-          {torneo ? <span className="truncate text-slate-500 dark:text-slate-500">{torneo.name}</span> : null}
+          {torneo ? (
+            <span className="inline-flex items-center gap-1.5 truncate">
+              <IconTrophy className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+              {torneo.name} {torneo.season_year}
+            </span>
+          ) : null}
           {!hasResult && m.result ? (
             <span className="ml-auto font-medium text-slate-700 dark:text-slate-300">Resultado: {m.result}</span>
           ) : null}
@@ -316,8 +336,9 @@ export function MatchesPage() {
         }
       >
         {canCreate ? (
-          <button
-            className="sf-btn sf-btn-primary"
+          <Button
+            variant="primary"
+            icon={<IconPlus />}
             onClick={() => {
               setEditingMatch(null)
               setFieldErrors({})
@@ -332,7 +353,7 @@ export function MatchesPage() {
             }}
           >
             Nuevo partido
-          </button>
+          </Button>
         ) : null}
       </PageHeader>
 
@@ -342,11 +363,13 @@ export function MatchesPage() {
         onClose={closeModal}
         footer={
           <div className="flex justify-end gap-2">
-            <button className="sf-btn sf-btn-secondary" onClick={closeModal} disabled={creating}>
+            <Button variant="secondary" icon={<IconX />} onClick={closeModal} disabled={creating}>
               Cancelar
-            </button>
-            <button
-              className="sf-btn sf-btn-primary"
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={creating}
               disabled={creating}
               onClick={async () => {
                 if (!accessToken) return
@@ -411,7 +434,7 @@ export function MatchesPage() {
               }}
             >
               {creating ? (editingMatch ? 'Guardando…' : 'Creando…') : editingMatch ? 'Guardar' : 'Crear'}
-            </button>
+            </Button>
           </div>
         }
       >
@@ -447,7 +470,7 @@ export function MatchesPage() {
               <option value="" disabled>
                 Selecciona…
               </option>
-              {tournamentOptions.map((t) => (
+              {tournamentOptionsForForm.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name} ({t.season_year})
                 </option>

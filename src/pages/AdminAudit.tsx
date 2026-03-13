@@ -35,7 +35,7 @@ export function AdminAuditPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken])
 
-  if (me?.role !== 'admin') return <div className="text-sm text-slate-600 dark:text-slate-400">Sin permiso.</div>
+  if (me?.role !== 'admin') return null
 
   return (
     <div className="space-y-3">
