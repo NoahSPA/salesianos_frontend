@@ -75,8 +75,11 @@ function IconAlertCircle(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
-import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
+import { apiFetch, apiUpload, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
+import { Button } from '../ui/Button'
+import { IconCheck, IconPlus, IconX } from '../ui/Icons'
+import { Modal } from '../ui/Modal'
 import { SeriesBadge } from '../ui/SeriesBadge'
 
 type Match = {
@@ -174,6 +177,20 @@ export function DashboardPage() {
   const [pendingPaymentsCount, setPendingPaymentsCount] = useState<number>(0)
 
   const [seriesConvocations, setSeriesConvocations] = useState<SeriesConvocationCard[] | null>(null)
+
+  const [registerPaymentOpen, setRegisterPaymentOpen] = useState(false)
+  const [registerPaymentSaving, setRegisterPaymentSaving] = useState(false)
+  const [registerPaymentError, setRegisterPaymentError] = useState<string | null>(null)
+  const [registerRut, setRegisterRut] = useState('')
+  const [registerAmount, setRegisterAmount] = useState(150000)
+  const [registerPeriod, setRegisterPeriod] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [registerRef, setRegisterRef] = useState('')
+  const [registerNotes, setRegisterNotes] = useState('')
+  const [registerReceiptFile, setRegisterReceiptFile] = useState<File | null>(null)
+  const [registerFieldErrors, setRegisterFieldErrors] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (!accessToken) return
@@ -288,13 +305,28 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 pb-8">
-      <header className="border-b border-slate-200 pb-6 dark:border-slate-700">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
-          {greeting()}, {me?.username}
-        </h1>
-        <p className="mt-1 text-slate-600 dark:text-slate-400">
-          Resumen del equipo y actividad reciente
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-6 dark:border-slate-700">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
+            {greeting()}, {me?.username}
+          </h1>
+          <p className="mt-1 text-slate-600 dark:text-slate-400">
+            Resumen del equipo y actividad reciente
+          </p>
+        </div>
+        {!canTreasury ? (
+          <Button
+            variant="primary"
+            icon={<IconPlus className="h-4 w-4" />}
+            onClick={() => {
+              setRegisterPaymentOpen(true)
+              setRegisterPaymentError(null)
+              setRegisterFieldErrors({})
+            }}
+          >
+            Registrar pago
+          </Button>
+        ) : null}
       </header>
 
       {/* KPIs: cada caja con skeleton o dato */}
@@ -440,6 +472,169 @@ export function DashboardPage() {
       {feeStatusError && (
         <p className="text-sm text-slate-500 dark:text-slate-400">{feeStatusError}</p>
       )}
+
+      <Modal
+        open={registerPaymentOpen}
+        title="Registrar pago"
+        onClose={() => {
+          if (!registerPaymentSaving) {
+            setRegisterPaymentOpen(false)
+            setRegisterPaymentError(null)
+            setRegisterRut('')
+            setRegisterAmount(150000)
+            setRegisterPeriod(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+            setRegisterRef('')
+            setRegisterNotes('')
+            setRegisterReceiptFile(null)
+            setRegisterFieldErrors({})
+          }
+        }}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              icon={<IconX />}
+              onClick={() => setRegisterPaymentOpen(false)}
+              disabled={registerPaymentSaving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconCheck />}
+              loading={registerPaymentSaving}
+              disabled={registerPaymentSaving}
+              onClick={async () => {
+                if (!accessToken) return
+                setRegisterPaymentError(null)
+                const err: Record<string, boolean> = {}
+                if (!registerRut.trim()) err.rut = true
+                if (registerAmount <= 0) err.amount = true
+                if (Object.keys(err).length > 0) {
+                  setRegisterFieldErrors(err)
+                  return
+                }
+                setRegisterFieldErrors({})
+                setRegisterPaymentSaving(true)
+                try {
+                  const created = await apiFetch<{ id: string }>('/api/payments/self-register', {
+                    method: 'POST',
+                    authToken: accessToken,
+                    body: JSON.stringify({
+                      rut: registerRut.trim(),
+                      amount: registerAmount,
+                      target_month: registerPeriod || null,
+                      reference_number: registerRef.trim() || null,
+                      notes_player: registerNotes.trim() || null,
+                    }),
+                  })
+                  if (registerReceiptFile) {
+                    await apiUpload(`/api/payments/${created.id}/receipt`, registerReceiptFile, {
+                      authToken: accessToken,
+                    })
+                  }
+                  setRegisterPaymentOpen(false)
+                  setRegisterRut('')
+                  setRegisterAmount(150000)
+                  setRegisterPeriod(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+                  setRegisterRef('')
+                  setRegisterNotes('')
+                  setRegisterReceiptFile(null)
+                } catch (e: unknown) {
+                  setRegisterPaymentError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
+                } finally {
+                  setRegisterPaymentSaving(false)
+                }
+              }}
+            >
+              {registerPaymentSaving ? 'Guardando…' : 'Registrar'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <p className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
+            El pago queda <strong>pendiente de validación</strong>. El tesorero lo revisará y validará.
+          </p>
+          {registerPaymentError ? (
+            <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200 sm:col-span-2">
+              {registerPaymentError}
+            </div>
+          ) : null}
+          <label className="block text-sm sm:col-span-2">
+            RUT
+            <input
+              className={`mt-1 w-full sf-input ${registerFieldErrors.rut ? 'sf-input-invalid' : ''}`}
+              type="text"
+              placeholder="12345678-9"
+              value={registerRut}
+              onChange={(e) => {
+                setRegisterRut(e.target.value)
+                setRegisterFieldErrors((p) => (p.rut ? { ...p, rut: false } : p))
+              }}
+            />
+            {registerFieldErrors.rut && (
+              <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>
+            )}
+          </label>
+          <label className="block text-sm">
+            Período (mes)
+            <input
+              className="mt-1 w-full sf-input"
+              type="month"
+              value={registerPeriod}
+              onChange={(e) => setRegisterPeriod(e.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            Monto (CLP)
+            <input
+              className={`mt-1 w-full sf-input ${registerFieldErrors.amount ? 'sf-input-invalid' : ''}`}
+              type="number"
+              min={1}
+              value={registerAmount}
+              onChange={(e) => {
+                setRegisterAmount(Number(e.target.value))
+                setRegisterFieldErrors((p) => (p.amount ? { ...p, amount: false } : p))
+              }}
+            />
+            {registerFieldErrors.amount && (
+              <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Ingresa un monto mayor a 0</span>
+            )}
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            Referencia (opcional)
+            <input
+              className="mt-1 w-full sf-input"
+              type="text"
+              placeholder="Número de transferencia"
+              value={registerRef}
+              onChange={(e) => setRegisterRef(e.target.value)}
+            />
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            Comprobante de pago (opcional)
+            <input
+              className="mt-1 w-full sf-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+              onChange={(e) => setRegisterReceiptFile(e.target.files?.[0] ?? null)}
+            />
+            <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+              Imagen o PDF, máx 8 MB
+            </span>
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            Nota (opcional)
+            <input
+              className="mt-1 w-full sf-input"
+              type="text"
+              value={registerNotes}
+              onChange={(e) => setRegisterNotes(e.target.value)}
+            />
+          </label>
+        </div>
+      </Modal>
 
       {/* Tesorería resumida (solo si puede ver) */}
       {canTreasury && (

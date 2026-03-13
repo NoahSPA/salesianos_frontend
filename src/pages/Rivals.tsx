@@ -227,7 +227,7 @@ export function RivalsPage() {
             {series.length === 0 ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">No hay series. Crea series primero.</p> : null}
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-            <Switch checked={active} onChange={setActive} aria-label="Activo" />
+            <Switch checked={active} onChange={setActive} aria-label="Activo" size="sm" />
             <span>Activo</span>
           </label>
           <label className="block text-sm text-slate-700 dark:text-slate-300">

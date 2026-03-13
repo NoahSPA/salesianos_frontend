@@ -36,6 +36,7 @@ type Player = {
   first_name: string
   last_name: string
   active: boolean
+  dorsal?: number | null
   primary_series_id?: string
   series_ids?: string[]
 }
@@ -113,6 +114,15 @@ export function SeriesPage() {
     }
     return map
   }, [items, players])
+
+  const sortedItems = useMemo(
+    () =>
+      [...items].sort((a, b) => {
+        if (a.active !== b.active) return a.active ? -1 : 1
+        return (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })
+      }),
+    [items],
+  )
 
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users])
   const playersById = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
@@ -442,7 +452,7 @@ export function SeriesPage() {
             </label>
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-            <Switch checked={editActive} onChange={setEditActive} aria-label="Activa" />
+            <Switch checked={editActive} onChange={setEditActive} aria-label="Activa" size="sm" />
             <span>Activa</span>
           </label>
         </div>
@@ -454,7 +464,7 @@ export function SeriesPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {items.map((s) => {
+          {sortedItems.map((s) => {
             const seriesPlayers = playersBySeriesId[s.id] ?? []
             return (
               <div key={s.id} className="sf-card flex flex-col overflow-hidden rounded-lg border border-slate-200 dark:border-slate-600">
@@ -551,6 +561,7 @@ export function SeriesPage() {
                         })
                         .map((p) => (
                         <li key={p.id} className="text-sm text-slate-700 dark:text-slate-300">
+                          {p.dorsal != null ? `${String(p.dorsal).padStart(2, '0')} - ` : '— - '}
                           {p.first_name} {p.last_name}
                           {!p.active ? <span className="ml-1 text-slate-400 dark:text-slate-500">(inact.)</span> : null}
                         </li>

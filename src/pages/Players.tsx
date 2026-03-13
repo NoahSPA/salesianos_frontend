@@ -388,7 +388,7 @@ export function PlayersPage() {
                   className="absolute inset-0 w-full h-full object-cover"
                 />
                 {playersOnField.map(({ player, x, y }) => {
-                  const display = player.dorsal != null ? String(player.dorsal).padStart(2, '0') : `${(player.first_name || '').trim().slice(0, 1)}${(player.last_name || '').trim().slice(0, 1)}`.toUpperCase() || '?'
+                  const display = `${(player.first_name || '').trim().slice(0, 1)}${(player.last_name || '').trim().slice(0, 1)}`.toUpperCase() || '?'
                   const isMemoria = player.in_memoriam
                   return (
                     <div
@@ -540,10 +540,6 @@ export function PlayersPage() {
                     const d = parseInt(dorsal, 10)
                     if (isNaN(d) || d < 1 || d > 99) err.dorsal = true
                   }
-                  if (!birthDate) err.birthDate = true
-                  if (!primarySeriesId) err.primarySeriesId = true
-                  if (!rut.trim()) err.rut = true
-                  else if (!validateRut(rut.trim())) err.rut = true
                 } else {
                   if (!rut.trim()) err.rut = true
                   else if (!validateRut(rut.trim())) err.rut = true
@@ -561,8 +557,8 @@ export function PlayersPage() {
                 setCreating(true)
                 const positions = inMemoriam ? ['cm'] : [primaryPosition, secondaryPosition].filter(Boolean)
                 try {
-                  const rutVal = normalizeRut(rut.trim())
-                  const phoneVal = inMemoriam ? '00000000' : phone.trim()
+                  const rutVal = inMemoriam ? (rut.trim() ? normalizeRut(rut.trim()) : null) : normalizeRut(rut.trim())
+                  const phoneVal = inMemoriam ? (phone.trim() || '00000000') : phone.trim()
                   const dorsalVal = dorsal.trim() ? parseInt(dorsal, 10) || null : null
                   const body = {
                     first_name: firstName.trim(),
@@ -570,10 +566,10 @@ export function PlayersPage() {
                     last_name: lastName.trim(),
                     second_last_name: secondLastName.trim() || null,
                     rut: rutVal,
-                    birth_date: birthDate,
+                    birth_date: inMemoriam ? (birthDate || null) : birthDate,
                     phone: phoneVal,
                     email: inMemoriam ? null : (email.trim() || null),
-                    primary_series_id: primarySeriesId,
+                    primary_series_id: inMemoriam ? (primarySeriesId || null) : primarySeriesId,
                     series_ids: editingPlayer?.series_ids ?? [],
                     positions,
                     level_stars: inMemoriam ? 3 : levelStars,
@@ -636,8 +632,8 @@ export function PlayersPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Datos del jugador</div>
               <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                <Switch checked={inMemoriam} onChange={setInMemoriam} aria-label="En memoria" />
-                <span>En memoria (fallecido)</span>
+                <Switch checked={inMemoriam} onChange={setInMemoriam} aria-label="En memoria" size="sm" />
+                <span>En memoria</span>
               </label>
             </div>
             <div className="mt-3 flex flex-col gap-4 lg:flex-row">
@@ -661,7 +657,7 @@ export function PlayersPage() {
                   <input className="mt-1 sf-input" value={secondLastName} onChange={(e) => setSecondLastName(e.target.value)} placeholder="Opcional" />
                 </label>
                 <label className="block text-sm text-slate-700 dark:text-slate-300">
-                  RUT
+                  RUT {inMemoriam ? '(opcional)' : ''}
                   <input
                       className={`mt-1 sf-input ${fieldErrors.rut ? 'sf-input-invalid' : ''}`}
                       value={rut}
@@ -674,7 +670,7 @@ export function PlayersPage() {
                     {fieldErrors.rut && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">{!rut.trim() ? 'Requerido' : RUT_INVALID_MESSAGE}</span>}
                 </label>
                 <label className="block text-sm text-slate-700 dark:text-slate-300">
-                  Nacimiento
+                  Nacimiento {inMemoriam ? '(opcional)' : ''}
                 <input className={`mt-1 sf-input ${fieldErrors.birthDate ? 'sf-input-invalid' : ''}`} type="date" value={birthDate} onChange={(e) => { setBirthDate(e.target.value); clearPlayerFieldError('birthDate') }} />
                 {fieldErrors.birthDate && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
               </label>
@@ -722,7 +718,7 @@ export function PlayersPage() {
               </label>
               ) : null}
               <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Serie principal
+                Serie principal {inMemoriam ? '(opcional)' : ''}
                 <select
                   className={`mt-1 sf-input ${fieldErrors.primarySeriesId ? 'sf-input-invalid' : ''}`}
                   value={primarySeriesId}
@@ -741,7 +737,7 @@ export function PlayersPage() {
               </label>
               {editingPlayer && !inMemoriam ? (
                 <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                  <Switch checked={active} onChange={setActive} aria-label="Activo" />
+                  <Switch checked={active} onChange={setActive} aria-label="Activo" size="sm" />
                   <span>Activo</span>
                 </label>
               ) : null}

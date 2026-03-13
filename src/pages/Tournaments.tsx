@@ -483,7 +483,7 @@ export function TournamentsPage() {
             />
           </label>
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 sm:col-span-3">
-            <Switch checked={editActive} onChange={setEditActive} aria-label="Activo" />
+            <Switch checked={editActive} onChange={setEditActive} aria-label="Activo" size="sm" />
             <span>Activo</span>
           </label>
           <div className="sm:col-span-3 grid grid-cols-2 gap-3">

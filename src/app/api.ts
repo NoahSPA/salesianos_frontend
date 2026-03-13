@@ -74,6 +74,21 @@ export async function apiFetch<T>(
   return (await res.json()) as T
 }
 
+/** Abre un archivo (imagen/PDF) en nueva pestaña con autenticación. */
+export async function apiOpenBlobInNewTab(
+  path: string,
+  authToken: string | null | undefined,
+): Promise<void> {
+  const headers = new Headers()
+  if (authToken) headers.set('Authorization', `Bearer ${authToken}`)
+  const res = await fetch(`${API_BASE}${path}`, { headers, credentials: 'include' })
+  if (!res.ok) throw new Error(ERROR_MENSAJE_ES)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener')
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
 /** Descarga un archivo (blob) con autenticación y dispara la descarga en el navegador. */
 export async function apiDownloadBlob(
   path: string,

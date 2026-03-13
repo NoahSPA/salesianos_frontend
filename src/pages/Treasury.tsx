@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Clock, Grid, LayoutDashboard, Pencil, Scale, Trash2, Users } from 'lucide-react'
-import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
+import { apiFetch, apiOpenBlobInNewTab, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { Button } from '../ui/Button'
 import { IconArrowRight, IconCheck, IconPlus, IconTrash2, IconX } from '../ui/Icons'
@@ -21,6 +21,7 @@ type Payment = {
   notes_treasurer?: string | null
   created_at?: string
   target_month?: string | null
+  receipt_file_id?: string | null
 }
 
 type Player = { id: string; first_name: string; last_name: string; primary_series_id: string }
@@ -802,6 +803,17 @@ export function TreasuryPage() {
                 ) : null}
                 {p.transfer_ref ? <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">Ref: {p.transfer_ref}</div> : null}
                 {p.notes_player ? <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">Nota jugador: {p.notes_player}</div> : null}
+                {p.receipt_file_id ? (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-primary hover:underline"
+                      onClick={() => apiOpenBlobInNewTab(`/api/payments/${p.id}/receipt`, accessToken).catch(() => {})}
+                    >
+                      Ver comprobante
+                    </button>
+                  </div>
+                ) : null}
                 <div className="mt-3 flex gap-2">
                   <Button
                     variant="primary"
@@ -875,6 +887,21 @@ export function TreasuryPage() {
             <p className="text-sm text-slate-600 dark:text-slate-400">
               {actionModal.payment.player_name || actionModal.payment.player_id} · {clp(actionModal.payment.amount)}
             </p>
+            {actionModal.payment.receipt_file_id ? (
+              <p className="mt-1">
+                <button
+                  type="button"
+                  className="text-sm font-medium text-primary hover:underline"
+                  onClick={() =>
+                    apiOpenBlobInNewTab(`/api/payments/${actionModal!.payment.id}/receipt`, accessToken).catch(
+                      () => {},
+                    )
+                  }
+                >
+                  Ver comprobante
+                </button>
+              </p>
+            ) : null}
             {actionModal.payment.target_month ? (
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                 Período: {formatYearMonthLong(actionModal.payment.target_month)}
