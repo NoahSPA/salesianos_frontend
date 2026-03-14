@@ -3,10 +3,12 @@ import { Pencil } from 'lucide-react'
 import { apiFetch, apiUpload, ERROR_MENSAJE_ES } from '../app/api'
 import { useAuth } from '../app/auth'
 import { Button } from '../ui/Button'
-import { IconCheck, IconFileSpreadsheet, IconPlus, IconX } from '../ui/Icons'
+import { IconCheck, IconDownload, IconFileSpreadsheet, IconPlus, IconX } from '../ui/Icons'
 import { Modal } from '../ui/Modal'
 import { PageHeader } from '../ui/PageHeader'
 import { SeriesBadge } from '../ui/SeriesBadge'
+import * as XLSX from 'xlsx'
+import { formatDateDDMMYYYY } from '../utils/date'
 import { formatRutDisplay, normalizeRut, RUT_INVALID_MESSAGE, validateRut } from '../utils/rut'
 import { getPlayerAvatarUrl } from '../utils/avatar'
 import { Switch } from '../ui/Switch'
@@ -69,6 +71,31 @@ function formatRowAsFieldValue(row: Record<string, string>): Array<{ campo: stri
     }))
 }
 
+/** Significados graciosos y positivos por nivel (1 = mínimo, 5 = máximo). Referencia de mejora. */
+const LEVEL_STAR_LABELS: Record<number, string> = {
+  1: 'Recién despegando — ¡las ganas cuentan!',
+  2: 'Ya sabe por dónde va la pelota',
+  3: 'Se defiende solo y hasta arma jugadas',
+  4: 'Lo buscan para el equipo — nivel crack',
+  5: 'MVP del domingo — leyenda del barrio',
+}
+
+/** Campos opcionales para exportar lista de jugadores. Nombre completo y número van siempre. */
+const EXPORT_OPTIONAL_FIELDS: Array<{ id: string; label: string }> = [
+  { id: 'rut', label: 'RUT' },
+  { id: 'nacimiento', label: 'Nacimiento' },
+  { id: 'telefono', label: 'Teléfono' },
+  { id: 'email', label: 'Email' },
+  { id: 'serie', label: 'Serie' },
+  { id: 'posicion_principal', label: 'Posición principal' },
+  { id: 'posicion_secundaria', label: 'Posición secundaria' },
+  { id: 'talla', label: 'Talla' },
+  { id: 'nivel', label: 'Nivel' },
+  { id: 'activo', label: 'Activo' },
+  { id: 'en_memoria', label: 'En memoria' },
+  { id: 'observaciones', label: 'Observaciones' },
+]
+
 const PLAYER_POSITIONS: Array<{ code: Player['positions'][number]; label: string; group: string }> = [
   { code: 'gk', label: 'Portero', group: 'Portero' },
   { code: 'rb', label: 'Lateral derecho', group: 'Defensa' },
@@ -108,10 +135,11 @@ function PlayerAvatar(props: { firstName: string; lastName: string; avatarUrl?: 
   )
 }
 
-function Stars(props: { value: number; onChange?: (v: number) => void; readonly?: boolean; compact?: boolean }) {
+function Stars(props: { value: number; onChange?: (v: number) => void; readonly?: boolean; compact?: boolean; levelLabels?: Record<number, string> }) {
   const v = Math.max(0, Math.min(5, props.value || 0))
   const size = props.compact ? 'h-5 w-5' : 'h-8 w-8'
   const iconSize = props.compact ? 'h-3 w-3' : 'h-5 w-5'
+  const labels = props.levelLabels
   return (
     <div className="flex items-center gap-0.5">
       {Array.from({ length: 5 }).map((_, i) => {
@@ -123,7 +151,8 @@ function Stars(props: { value: number; onChange?: (v: number) => void; readonly?
             type="button"
             className={'rounded border transition-colors ' + size + ' ' + (filled ? 'border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-900/30' : 'border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-800') + (props.readonly ? ' opacity-90' : ' hover:bg-slate-50 dark:hover:bg-slate-700')}
             onClick={props.readonly ? undefined : () => props.onChange?.(n)}
-            aria-label={`${n} estrellas`}
+            aria-label={labels?.[n] ?? `${n} estrellas`}
+            title={labels?.[n]}
             disabled={props.readonly}
           >
             <svg viewBox="0 0 24 24" className={'mx-auto ' + iconSize + ' ' + (filled ? 'text-amber-500 dark:text-amber-400' : 'text-slate-300 dark:text-slate-500')} fill="currentColor" aria-hidden="true">
@@ -176,7 +205,12 @@ export function PlayersPage() {
   const [importExcelError, setImportExcelError] = useState<string | null>(null)
   const [importExcelResult, setImportExcelResult] = useState<PlayerImportResult | null>(null)
 
-  const canAdmin = me?.role === 'admin'
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportFields, setExportFields] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(EXPORT_OPTIONAL_FIELDS.map((f) => [f.id, false]))
+  )
+
+  const canEditPlayers = me?.role === 'admin' || me?.role === 'delegado'
 
   function clearPlayerFieldError(field: string) {
     setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: false } : prev))
@@ -241,6 +275,46 @@ export function PlayersPage() {
     }
   }
 
+  function downloadExport() {
+    const toExport = items.filter((p) => !p.in_memoriam)
+    const headers = ['Primer nombre', 'Segundo nombre', 'Primer apellido', 'Segundo apellido', 'Número', ...EXPORT_OPTIONAL_FIELDS.filter((f) => exportFields[f.id]).map((f) => f.label)]
+    const rows = toExport.map((p) => {
+      const row: string[] = [
+        p.first_name ?? '',
+        p.second_first_name ?? '',
+        p.last_name ?? '',
+        p.second_last_name ?? '',
+        p.dorsal != null ? String(p.dorsal) : '—',
+      ]
+      EXPORT_OPTIONAL_FIELDS.forEach((f) => {
+        if (!exportFields[f.id]) return
+        let cell = '—'
+        switch (f.id) {
+          case 'rut': cell = p.rut || ''; break
+          case 'nacimiento': cell = p.birth_date ? formatDateDDMMYYYY(p.birth_date) : ''; break
+          case 'telefono': cell = p.phone || ''; break
+          case 'email': cell = p.email ?? ''; break
+          case 'serie': cell = seriesById[p.primary_series_id]?.name ?? ''; break
+          case 'posicion_principal': cell = (p.positions?.[0] && posLabel[p.positions[0]]) ?? ''; break
+          case 'posicion_secundaria': cell = (p.positions?.[1] && posLabel[p.positions[1]]) ?? ''; break
+          case 'talla': cell = p.talla ?? ''; break
+          case 'nivel': cell = p.level_stars != null ? String(p.level_stars) : ''; break
+          case 'activo': cell = p.active ? 'Sí' : 'No'; break
+          case 'observaciones': cell = p.notes ?? ''; break
+          default: break
+        }
+        row.push(cell)
+      })
+      return row
+    })
+    const data: string[][] = [headers, ...rows]
+    const ws = XLSX.utils.aoa_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Jugadores')
+    XLSX.writeFile(wb, `jugadores-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    setExportOpen(false)
+  }
+
   async function reload() {
     if (!accessToken) return
     const qs = new URLSearchParams()
@@ -265,12 +339,12 @@ export function PlayersPage() {
 
   // Al abrir el modal, asegurar que hay series (por si el listado falló antes)
   useEffect(() => {
-    if (open && canAdmin && accessToken && series.length === 0 && !loading) {
+    if (open && canEditPlayers && accessToken && series.length === 0 && !loading) {
       apiFetch<Series[]>('/api/series', { authToken: accessToken })
         .then(setSeries)
         .catch(() => {})
     }
-  }, [open, canAdmin, accessToken, series.length, loading])
+  }, [open, canEditPlayers, accessToken, series.length, loading])
 
   /** Coordenadas en la cancha (x, y) en % — vista desde arriba, nuestro arco abajo */
   const positionCoords: Record<string, { x: number; y: number }> = useMemo(() => ({
@@ -353,7 +427,7 @@ export function PlayersPage() {
           </div>
         }
       >
-        {canAdmin ? (
+        {canEditPlayers ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" icon={<IconPlus />} onClick={openCreate}>
               Nuevo jugador
@@ -369,7 +443,14 @@ export function PlayersPage() {
                 setImportExcelResult(null)
               }}
             >
-              Cargar Excel
+              Cargar Jugadores
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<IconDownload />}
+              onClick={() => setExportOpen(true)}
+            >
+              Exportar lista
             </Button>
           </div>
         ) : null}
@@ -391,20 +472,22 @@ export function PlayersPage() {
                   const display = `${(player.first_name || '').trim().slice(0, 1)}${(player.last_name || '').trim().slice(0, 1)}`.toUpperCase() || '?'
                   const isMemoria = player.in_memoriam
                   return (
-                    <div
+                    <button
                       key={player.id}
-                      className={`absolute flex items-center justify-center rounded-full border-2 border-white shadow-md cursor-pointer hover:opacity-90 text-white text-xs font-semibold select-none w-8 h-8 ${isMemoria ? 'opacity-75' : ''}`}
+                      type="button"
+                      className={`absolute flex items-center justify-center rounded-full border-2 border-white shadow-md cursor-pointer hover:opacity-90 text-white text-xs font-semibold select-none w-8 h-8 z-10 ${isMemoria ? 'opacity-75' : ''}`}
                       style={{
                         left: `${x}%`,
                         top: `${y}%`,
                         transform: 'translate(-50%, -50%)',
                         backgroundColor: isMemoria ? '#64748b' : (player.active ? '#006600' : '#64748b'),
                       }}
-                      onClick={() => canAdmin && openEdit(player)}
-                      title={`${player.first_name} ${player.last_name}${canAdmin ? ' · Clic para editar' : ''}`}
+                      onClick={() => openEdit(player)}
+                      title={`${[player.first_name, player.second_first_name].filter(Boolean).join(' ')} ${[player.last_name, player.second_last_name].filter(Boolean).join(' ')} · Clic para ver detalle`}
+                      aria-label={`Ver detalle de ${player.first_name} ${player.last_name}`}
                     >
                       {display}
-                    </div>
+                    </button>
                   )
                 })}
               </div>
@@ -430,7 +513,7 @@ export function PlayersPage() {
                         {String(p.dorsal).padStart(2, '0')}
                       </div>
                     ) : null}
-                    {canAdmin ? (
+                    {canEditPlayers ? (
                       <button
                         type="button"
                         className="absolute right-2 top-2 z-10 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-300"
@@ -440,7 +523,17 @@ export function PlayersPage() {
                       >
                         <Pencil className="h-4 w-4" strokeWidth={2} />
                       </button>
-                    ) : null}
+                    ) : (
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 z-10 rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+                        onClick={() => openEdit(p)}
+                        title="Ver detalle"
+                        aria-label="Ver detalle del jugador"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    )}
                     <div className="flex items-start gap-3">
                       <PlayerAvatar firstName={p.first_name} lastName={p.last_name} avatarUrl={getPlayerAvatarUrl(p)} size="sm" />
                       <div className="min-w-0 flex-1 pr-8">
@@ -451,7 +544,7 @@ export function PlayersPage() {
                         </div>
                         {p.in_memoriam ? (
                           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                            {typeof p.birth_date === 'string' ? p.birth_date.slice(0, 10) : p.birth_date}
+                            {formatDateDDMMYYYY(p.birth_date)}
                           </p>
                         ) : primarySeries ? (
                           <SeriesBadge seriesId={p.primary_series_id} name={primarySeries.name} color={primarySeries.color} className="mt-1" />
@@ -469,9 +562,9 @@ export function PlayersPage() {
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-0.5">
-                          <Stars value={p.level_stars ?? 3} readonly compact />
+                          <Stars value={p.level_stars ?? 3} readonly compact levelLabels={LEVEL_STAR_LABELS} />
                         </div>
-                        {canAdmin ? (
+                        {canEditPlayers ? (
                           <Switch
                             checked={!!p.active}
                             onChange={async (checked) => {
@@ -514,11 +607,18 @@ export function PlayersPage() {
       ) : null}
 
       <Modal
-        open={open && canAdmin}
-        title={editingPlayer ? 'Editar jugador' : 'Crear jugador'}
-        maxWidthClassName="sm:max-w-5xl"
+        open={canEditPlayers ? open : editingPlayer !== null}
+        title={editingPlayer ? (canEditPlayers ? 'Editar jugador' : 'Detalle del jugador') : 'Crear jugador'}
+        maxWidthClassName={editingPlayer && !canEditPlayers ? 'sm:max-w-md' : 'sm:max-w-5xl'}
         onClose={closeModal}
         footer={
+          !canEditPlayers && editingPlayer ? (
+            <div className="flex justify-end">
+              <Button variant="secondary" icon={<IconX />} onClick={closeModal}>
+                Cerrar
+              </Button>
+            </div>
+          ) : (
           <div className="flex justify-end gap-2">
             <Button variant="secondary" icon={<IconX />} onClick={closeModal} disabled={creating}>
               Cancelar
@@ -623,10 +723,53 @@ export function PlayersPage() {
               {creating ? (editingPlayer ? 'Guardando…' : 'Creando…') : editingPlayer ? 'Guardar' : 'Crear'}
             </Button>
           </div>
+          )
         }
       >
         <div className="space-y-4">
           {error ? <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200">{error}</div> : null}
+          {editingPlayer && !canEditPlayers ? (
+            <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-600 space-y-4">
+              <div className="flex flex-col items-center gap-2">
+                <PlayerAvatar
+                  firstName={editingPlayer.first_name}
+                  lastName={editingPlayer.last_name}
+                  avatarUrl={getPlayerAvatarUrl(editingPlayer)}
+                  size="lg"
+                />
+                <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {[editingPlayer.first_name, editingPlayer.second_first_name].filter(Boolean).join(' ')}{' '}
+                  {[editingPlayer.last_name, editingPlayer.second_last_name].filter(Boolean).join(' ')}
+                </span>
+                {editingPlayer.dorsal != null && (
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Dorsal {String(editingPlayer.dorsal).padStart(2, '0')}</span>
+                )}
+              </div>
+              <div className="space-y-2 text-sm border-t border-slate-200 pt-4 dark:border-slate-600">
+                {!editingPlayer.in_memoriam && editingPlayer.rut ? <p><span className="text-slate-500 dark:text-slate-400">RUT:</span> {editingPlayer.rut}</p> : null}
+                {editingPlayer.birth_date ? <p><span className="text-slate-500 dark:text-slate-400">Nacimiento:</span> {formatDateDDMMYYYY(editingPlayer.birth_date)}</p> : null}
+                {!editingPlayer.in_memoriam && editingPlayer.phone ? <p><span className="text-slate-500 dark:text-slate-400">Teléfono:</span> {editingPlayer.phone}</p> : null}
+                {editingPlayer.email ? <p><span className="text-slate-500 dark:text-slate-400">Email:</span> {editingPlayer.email}</p> : null}
+                {editingPlayer.primary_series_id && seriesById[editingPlayer.primary_series_id] ? (
+                  <p><span className="text-slate-500 dark:text-slate-400">Serie:</span> <SeriesBadge seriesId={editingPlayer.primary_series_id} name={seriesById[editingPlayer.primary_series_id].name} color={seriesById[editingPlayer.primary_series_id].color} /></p>
+                ) : null}
+                {(editingPlayer.positions?.length ?? 0) > 0 ? (
+                  <p>
+                    <span className="text-slate-500 dark:text-slate-400">Posición:</span>{' '}
+                    {(editingPlayer.positions ?? []).map((pos) => posLabel[pos] ?? pos).join(' · ')}
+                  </p>
+                ) : null}
+                {!editingPlayer.in_memoriam && (
+                  <p className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-slate-500 dark:text-slate-400">Nivel:</span>
+                    <Stars value={editingPlayer.level_stars ?? 3} readonly levelLabels={LEVEL_STAR_LABELS} />
+                    <span className="text-xs text-slate-500 dark:text-slate-400">— {LEVEL_STAR_LABELS[editingPlayer.level_stars ?? 3]}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+          <>
           {/* 1. Datos del jugador + Serie */}
           <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-600">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -690,7 +833,7 @@ export function PlayersPage() {
               <label className="block text-sm text-slate-700 dark:text-slate-300">
                 <span className="block">Dorsal {inMemoriam ? '(requerido)' : ''}</span>
                 <input
-                  className={`mt-1 sf-input w-20 ${fieldErrors.dorsal ? 'sf-input-invalid' : ''}`}
+                  className={`mt-1 sf-input ${fieldErrors.dorsal ? 'sf-input-invalid' : ''}`}
                   type="number"
                   min={1}
                   max={99}
@@ -702,41 +845,54 @@ export function PlayersPage() {
                 {fieldErrors.dorsal && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido para jugador en memoria</span>}
               </label>
               {!inMemoriam ? (
-              <label className="block text-sm text-slate-700 dark:text-slate-300">
-                <span className="block">Talla</span>
-                <select
-                  className="mt-1 sf-input"
-                  value={talla}
-                  onChange={(e) => setTalla(e.target.value)}
-                  aria-label="Talla de camiseta"
-                >
-                  <option value="">—</option>
-                  {TALLA_OPCIONES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </label>
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  <span className="block">Talla</span>
+                  <select
+                    className="mt-1 sf-input"
+                    value={talla}
+                    onChange={(e) => setTalla(e.target.value)}
+                    aria-label="Talla de camiseta"
+                  >
+                    <option value="">—</option>
+                    {TALLA_OPCIONES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  <span className="block">Serie principal (opcional)</span>
+                  <select
+                    className={`mt-1 sf-input ${fieldErrors.primarySeriesId ? 'sf-input-invalid' : ''}`}
+                    value={primarySeriesId}
+                    onChange={(e) => { setPrimarySeriesId(e.target.value); clearPlayerFieldError('primarySeriesId') }}
+                    aria-label="Serie principal"
+                  >
+                    <option value="">Selecciona…</option>
+                    {series.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}{s.active ? '' : ' (inactiva)'}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {!inMemoriam ? (
+                <label className="block text-sm text-slate-700 dark:text-slate-300">
+                  <span className="block">Serie principal</span>
+                  <select
+                    className={`mt-1 sf-input ${fieldErrors.primarySeriesId ? 'sf-input-invalid' : ''}`}
+                    value={primarySeriesId}
+                    onChange={(e) => { setPrimarySeriesId(e.target.value); clearPlayerFieldError('primarySeriesId') }}
+                    aria-label="Serie principal"
+                  >
+                    <option value="">Selecciona…</option>
+                    {series.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}{s.active ? '' : ' (inactiva)'}</option>
+                    ))}
+                  </select>
+                </label>
               ) : null}
-              <label className="block text-sm text-slate-700 dark:text-slate-300">
-                Serie principal {inMemoriam ? '(opcional)' : ''}
-                <select
-                  className={`mt-1 sf-input ${fieldErrors.primarySeriesId ? 'sf-input-invalid' : ''}`}
-                  value={primarySeriesId}
-                  onChange={(e) => { setPrimarySeriesId(e.target.value); clearPlayerFieldError('primarySeriesId') }}
-                  aria-label="Serie principal"
-                >
-                  <option value="">
-                    Selecciona…
-                  </option>
-                  {series.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}{s.active ? '' : ' (inactiva)'}
-                    </option>
-                  ))}
-                </select>
-              </label>
               {editingPlayer && !inMemoriam ? (
-                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 pt-6">
                   <Switch checked={active} onChange={setActive} aria-label="Activo" size="sm" />
                   <span>Activo</span>
                 </label>
@@ -841,18 +997,59 @@ export function PlayersPage() {
             <div className={`rounded-xl border p-4 dark:border-slate-600 ${fieldErrors.levelStars ? 'border-red-500 dark:border-red-400' : 'border-slate-200'}`}>
               <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Nivel</div>
               <div className="mt-3">
-                <Stars value={levelStars} onChange={(v) => { setLevelStars(v); clearPlayerFieldError('levelStars') }} />
+                <Stars value={levelStars} onChange={(v) => { setLevelStars(v); clearPlayerFieldError('levelStars') }} levelLabels={LEVEL_STAR_LABELS} />
                 {fieldErrors.levelStars && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Selecciona al menos 1 estrella</span>}
-                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">1 = principiante, 5 = crack.</div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400" role="status">{LEVEL_STAR_LABELS[levelStars]}</p>
               </div>
             </div>
           </div>
           ) : null}
+          </>
+          )}
         </div>
       </Modal>
 
       <Modal
-        open={importExcelOpen && !!canAdmin}
+        open={exportOpen && !!canEditPlayers}
+        title="Exportar lista de jugadores"
+        maxWidthClassName="sm:max-w-md"
+        onClose={() => setExportOpen(false)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" icon={<IconX />} onClick={() => setExportOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" icon={<IconDownload />} onClick={downloadExport}>
+              Exportar Excel
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Se incluyen siempre: <strong>Primer nombre</strong>, <strong>Segundo nombre</strong>, <strong>Primer apellido</strong>, <strong>Segundo apellido</strong> y <strong>Número</strong>. Los jugadores en memoria no se exportan. Elige los campos adicionales (para nómina, camisetas, etc.):
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {EXPORT_OPTIONAL_FIELDS.map((f) => (
+            <label key={f.id} className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={exportFields[f.id] ?? false}
+                onChange={(e) => setExportFields((prev) => ({ ...prev, [f.id]: e.target.checked }))}
+                className="rounded border-slate-300 text-primary focus:ring-primary dark:border-slate-600"
+              />
+              <span>{f.label}</span>
+            </label>
+          ))}
+        </div>
+        {items.filter((p) => !p.in_memoriam).length === 0 ? (
+          <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+            {items.length === 0 ? 'No hay jugadores en la lista.' : 'No hay jugadores para exportar (solo hay jugadores en memoria, que no se exportan).'} Ajusta filtros o agrega jugadores antes de exportar.
+          </p>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={importExcelOpen && !!canEditPlayers}
         title="Cargar jugadores desde Excel"
         maxWidthClassName="sm:max-w-2xl"
         onClose={() => {

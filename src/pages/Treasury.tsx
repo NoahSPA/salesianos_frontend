@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Clock, Grid, LayoutDashboard, Pencil, Scale, Trash2, Users } from 'lucide-react'
 import { apiFetch, apiOpenBlobInNewTab, ERROR_MENSAJE_ES } from '../app/api'
+import { formatDateTimeDDMMYYYY } from '../utils/date'
 import { useAuth } from '../app/auth'
 import { Button } from '../ui/Button'
 import { IconArrowRight, IconCheck, IconPlus, IconTrash2, IconX } from '../ui/Icons'
@@ -791,7 +792,7 @@ export function TreasuryPage() {
                   <span className="sf-badge sf-badge-amber">pendiente</span>
                 </div>
                 <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                  {clp(p.amount)} · {p.created_at ? new Date(p.created_at).toLocaleString('es-CL') : '-'}
+                  {clp(p.amount)} · {p.created_at ? formatDateTimeDDMMYYYY(p.created_at) : '-'}
                 </div>
                 {p.target_month ? (
                   <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">

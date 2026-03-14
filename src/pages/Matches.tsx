@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
+import { formatDateDDMMYYYY } from '../utils/date'
 import { useAuth } from '../app/auth'
 import { useBranding } from '../app/useBranding'
 import { Button } from '../ui/Button'
@@ -191,7 +192,7 @@ export function MatchesPage() {
     const serie = seriesById[m.series_id]
     const torneo = tournamentById[m.tournament_id]
     const dateObj = m.match_date ? new Date(m.match_date + 'T12:00:00') : null
-    const fechaLabel = dateObj ? dateObj.toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : m.match_date
+    const fechaLabel = dateObj ? `${dateObj.toLocaleDateString('es-CL', { weekday: 'short' })} ${formatDateDDMMYYYY(m.match_date)}` : m.match_date
     const our = m.our_goals ?? null
     const opp = m.opponent_goals ?? null
     const hasResult = our != null && opp != null

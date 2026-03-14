@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
+import { formatDateDDMMYYYY } from '../utils/date'
 import { useAuth } from '../app/auth'
 import { Button } from '../ui/Button'
 import { IconCheck, IconPlus, IconX } from '../ui/Icons'
@@ -722,9 +723,7 @@ export function TournamentsPage() {
                                       : (m.our_goals ?? 0) < (m.opponent_goals ?? 0)
                                         ? 'text-rose-600 dark:text-rose-400'
                                         : 'text-slate-500 dark:text-slate-400'
-                                const dateLabel = m.match_date
-                                  ? new Date(m.match_date + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
-                                  : ''
+                                const dateLabel = m.match_date ? formatDateDDMMYYYY(m.match_date) : ''
                                 return (
                                   <li key={m.id}>
                                     <Link

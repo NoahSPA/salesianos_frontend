@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiFetch, ERROR_MENSAJE_ES } from '../app/api'
+import { formatDateTimeDDMMYYYY } from '../utils/date'
 import { useAuth } from '../app/auth'
 import { PageHeader } from '../ui/PageHeader'
 
@@ -53,7 +54,7 @@ export function AdminAuditPage() {
           <div key={a.id} className="sf-card rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div className="font-medium text-slate-900 dark:text-slate-100">{a.action}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{new Date(a.created_at).toLocaleString()}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{formatDateTimeDDMMYYYY(a.created_at)}</div>
             </div>
             <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
               {a.entity_type}:{a.entity_id}

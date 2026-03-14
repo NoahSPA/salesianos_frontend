@@ -4,6 +4,7 @@ import { apiFetch } from '../app/api'
 import { useTheme } from '../app/theme'
 import { Button } from '../ui/Button'
 import { IconSend } from '../ui/Icons'
+import { formatDateDDMMYYYY } from '../utils/date'
 import { formatRutDisplay, normalizeRut, RUT_INVALID_MESSAGE, validateRut } from '../utils/rut'
 
 type PublicInfo = {
@@ -75,7 +76,7 @@ export function PublicConfirmPage() {
             vs {info.opponent}
           </div>
           <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-            {info.match_date} · citación {info.call_time}
+            {formatDateDDMMYYYY(info.match_date)} · citación {info.call_time}
           </div>
           <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
             {info.venue}
