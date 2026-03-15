@@ -182,13 +182,13 @@ export function DashboardPage() {
   const [registerPaymentSaving, setRegisterPaymentSaving] = useState(false)
   const [registerPaymentError, setRegisterPaymentError] = useState<string | null>(null)
   const [registerRut, setRegisterRut] = useState('')
-  const [registerAmount, setRegisterAmount] = useState(150000)
+  const [registerAmount, setRegisterAmount] = useState(0)
+  const [registerFeeSuggestion, setRegisterFeeSuggestion] = useState<{ fee_amount: number | null; fee_source: string | null } | null>(null)
   const [registerPeriod, setRegisterPeriod] = useState(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
   const [registerRef, setRegisterRef] = useState('')
-  const [registerNotes, setRegisterNotes] = useState('')
   const [registerReceiptFile, setRegisterReceiptFile] = useState<File | null>(null)
   const [registerFieldErrors, setRegisterFieldErrors] = useState<Record<string, boolean>>({})
 
@@ -212,14 +212,17 @@ export function DashboardPage() {
       apiFetch<Tournament[]>('/api/tournaments', { authToken: accessToken }),
     ])
       .then(([ms, ss, ts]) => {
-        const sorted = [...ms].sort((a, b) => a.match_date.localeCompare(b.match_date) || a.call_time.localeCompare(b.call_time))
+        const matchesList = Array.isArray(ms) ? ms : []
+        const seriesList = Array.isArray(ss) ? ss : []
+        const tournamentsList = Array.isArray(ts) ? ts : []
+        const sorted = [...matchesList].sort((a, b) => a.match_date.localeCompare(b.match_date) || a.call_time.localeCompare(b.call_time))
         setMatches(sorted)
-        setSeries(ss)
-        setTournaments(ts)
+        setSeries(seriesList)
+        setTournaments(tournamentsList)
         setError(null)
 
         // Convocatorias dependen de base; se lanzan al tener series y partidos
-        const activeSeries = ss.filter((x) => x.active)
+        const activeSeries = seriesList.filter((x) => x.active)
         const firstMatchBySeries = new Map<string, Match>()
         for (const m of sorted) {
           if (!firstMatchBySeries.has(m.series_id)) firstMatchBySeries.set(m.series_id, m)
@@ -248,7 +251,7 @@ export function DashboardPage() {
     // Estado de cuotas (en paralelo con el resto)
     setLoadingFeeStatus(true)
     apiFetch<PlayerFeeStatus[]>('/api/fees/status?active=true', { authToken: accessToken })
-      .then(setFeeStatus)
+      .then((st) => setFeeStatus(Array.isArray(st) ? st : []))
       .catch(async (e: unknown) => {
         setFeeStatus(null)
         setFeeStatusError(e instanceof Error ? e.message : 'Sin permiso o error al cargar cuotas')
@@ -274,6 +277,22 @@ export function DashboardPage() {
       setLoadingTreasury(false)
     }
   }, [accessToken, canTreasury])
+
+  useEffect(() => {
+    if (!accessToken || !registerPaymentOpen || !registerRut.trim() || !registerPeriod) {
+      setRegisterFeeSuggestion(null)
+      return
+    }
+    apiFetch<{ fee_amount: number | null; fee_source: string | null }>(
+      `/api/fees/player-fee-by-rut?rut=${encodeURIComponent(registerRut.trim())}&year_month=${encodeURIComponent(registerPeriod)}`,
+      { authToken: accessToken },
+    )
+      .then((r) => {
+        setRegisterFeeSuggestion(r)
+        setRegisterAmount(r.fee_amount != null ? r.fee_amount : 0)
+      })
+      .catch(() => setRegisterFeeSuggestion(null))
+  }, [accessToken, registerPaymentOpen, registerRut, registerPeriod])
 
   const seriesById = useMemo(() => Object.fromEntries(series.map((s) => [s.id, s])), [series])
   const tournamentById = useMemo(() => Object.fromEntries(tournaments.map((t) => [t.id, t])), [tournaments])
@@ -481,10 +500,10 @@ export function DashboardPage() {
             setRegisterPaymentOpen(false)
             setRegisterPaymentError(null)
             setRegisterRut('')
-            setRegisterAmount(150000)
+            setRegisterAmount(0)
+            setRegisterFeeSuggestion(null)
             setRegisterPeriod(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
             setRegisterRef('')
-            setRegisterNotes('')
             setRegisterReceiptFile(null)
             setRegisterFieldErrors({})
           }
@@ -525,7 +544,7 @@ export function DashboardPage() {
                       amount: registerAmount,
                       target_month: registerPeriod || null,
                       reference_number: registerRef.trim() || null,
-                      notes_player: registerNotes.trim() || null,
+                      notes_player: registerRef.trim() || null,
                     }),
                   })
                   if (registerReceiptFile) {
@@ -535,10 +554,10 @@ export function DashboardPage() {
                   }
                   setRegisterPaymentOpen(false)
                   setRegisterRut('')
-                  setRegisterAmount(150000)
+                  setRegisterAmount(0)
+                  setRegisterFeeSuggestion(null)
                   setRegisterPeriod(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
                   setRegisterRef('')
-                  setRegisterNotes('')
                   setRegisterReceiptFile(null)
                 } catch (e: unknown) {
                   setRegisterPaymentError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
@@ -577,6 +596,25 @@ export function DashboardPage() {
               <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>
             )}
           </label>
+          {registerRut.trim() && registerPeriod ? (
+            <div className="sf-card col-span-2 flex flex-wrap items-center gap-4 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+              <div>
+                <span className="text-xs font-medium text-emerald-800">Cuota mensual (según reglas):</span>
+                <span className="ml-2 font-semibold text-emerald-900 inline-flex items-center gap-1.5">
+                  {registerFeeSuggestion?.fee_amount != null
+                    ? formatClp(registerFeeSuggestion.fee_amount)
+                    : registerFeeSuggestion === null
+                      ? null
+                      : 'Sin cuota definida'}
+                </span>
+                {registerFeeSuggestion?.fee_source && registerFeeSuggestion.fee_source !== 'none' ? (
+                  <span className="ml-1 text-xs text-emerald-700">
+                    ({registerFeeSuggestion.fee_source === 'player' ? 'jugador' : registerFeeSuggestion.fee_source === 'series' ? 'serie' : 'general'})
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <label className="block text-sm">
             Período (mes)
             <input
@@ -591,7 +629,7 @@ export function DashboardPage() {
             <input
               className={`mt-1 w-full sf-input ${registerFieldErrors.amount ? 'sf-input-invalid' : ''}`}
               type="number"
-              min={1}
+              min={0}
               value={registerAmount}
               onChange={(e) => {
                 setRegisterAmount(Number(e.target.value))
@@ -601,13 +639,14 @@ export function DashboardPage() {
             {registerFieldErrors.amount && (
               <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Ingresa un monto mayor a 0</span>
             )}
+            <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Sugerido según RUT y período; puedes editarlo.</span>
           </label>
           <label className="block text-sm sm:col-span-2">
             Referencia (opcional)
             <input
               className="mt-1 w-full sf-input"
               type="text"
-              placeholder="Número de transferencia"
+              placeholder="Nº transferencia o nota"
               value={registerRef}
               onChange={(e) => setRegisterRef(e.target.value)}
             />
@@ -623,15 +662,6 @@ export function DashboardPage() {
             <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
               Imagen o PDF, máx 8 MB
             </span>
-          </label>
-          <label className="block text-sm sm:col-span-2">
-            Nota (opcional)
-            <input
-              className="mt-1 w-full sf-input"
-              type="text"
-              value={registerNotes}
-              onChange={(e) => setRegisterNotes(e.target.value)}
-            />
           </label>
         </div>
       </Modal>

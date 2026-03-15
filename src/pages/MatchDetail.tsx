@@ -615,6 +615,22 @@ export function MatchDetailPage() {
             </>
           ) : null}
         </div>
+      ) : conv && publicLink ? (
+        <div className="sf-card rounded-xl border border-slate-200 p-3 dark:border-slate-600">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Confirmar asistencia</h2>
+          <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+            Indica si vas o no al partido usando el siguiente enlace.
+          </p>
+          <a
+            href={publicLink}
+            target="_blank"
+            rel="noreferrer"
+            className="sf-btn sf-btn-primary mt-3 inline-flex items-center gap-2"
+          >
+            <IconCheck className="h-4 w-4" />
+            Confirmar mi asistencia
+          </a>
+        </div>
       ) : null}
 
       <Modal
@@ -690,8 +706,9 @@ export function MatchDetailPage() {
                 <li className="text-sm text-slate-500 dark:text-slate-400">Ninguno</li>
               ) : (
                 groupedByStatus.confirmed.map((p) => (
-                  <li key={p.id} className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {p.first_name} {p.last_name}
+                  <li key={p.id} className="flex items-start gap-2">
+                    <span className="shrink-0 text-sm font-medium text-slate-900 dark:text-slate-100">{p.first_name} {p.last_name}</span>
+                    {p.comment ? <span className="text-xs text-slate-600 dark:text-slate-400">{p.comment}</span> : null}
                   </li>
                 ))
               )}
@@ -715,8 +732,9 @@ export function MatchDetailPage() {
                 <li className="text-sm text-slate-500 dark:text-slate-400">Ninguno</li>
               ) : (
                 groupedByStatus.pending.map((p) => (
-                  <li key={p.id} className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {p.first_name} {p.last_name}
+                  <li key={p.id} className="flex items-start gap-2">
+                    <span className="shrink-0 text-sm font-medium text-slate-900 dark:text-slate-100">{p.first_name} {p.last_name}</span>
+                    {p.comment ? <span className="text-xs text-slate-600 dark:text-slate-400">{p.comment}</span> : null}
                   </li>
                 ))
               )}
@@ -729,9 +747,9 @@ export function MatchDetailPage() {
                 <li className="text-sm text-slate-500 dark:text-slate-400">Ninguno</li>
               ) : (
                 groupedByStatus.declined.map((p) => (
-                  <li key={p.id} className="block">
-                    <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{p.first_name} {p.last_name}</span>
-                    {p.comment ? <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{p.comment}</p> : null}
+                  <li key={p.id} className="flex items-start gap-2">
+                    <span className="shrink-0 text-sm font-medium text-slate-900 dark:text-slate-100">{p.first_name} {p.last_name}</span>
+                    {p.comment ? <span className="text-xs text-slate-600 dark:text-slate-400">{p.comment}</span> : null}
                   </li>
                 ))
               )}

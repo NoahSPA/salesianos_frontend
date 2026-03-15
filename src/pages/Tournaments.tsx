@@ -14,6 +14,7 @@ import { Switch } from '../ui/Switch'
 
 type Series = { id: string; name: string; active: boolean; color?: string | null }
 
+type Player = { id: string; first_name: string; last_name: string; primary_series_id: string; active?: boolean }
 type Tournament = {
   id: string
   name: string
@@ -25,6 +26,7 @@ type Tournament = {
   start_month?: string | null
   end_month?: string | null
   series_ids: string[]
+  player_ids?: string[]
   location?: {
     name?: string | null
     map_url?: string | null
@@ -88,22 +90,30 @@ export function TournamentsPage() {
   const [editFieldErrors, setEditFieldErrors] = useState<Record<string, boolean>>({})
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [createSeriesIds, setCreateSeriesIds] = useState<string[]>([])
+  const [createPlayerIds, setCreatePlayerIds] = useState<string[]>([])
   const [editSeriesIds, setEditSeriesIds] = useState<string[]>([])
+  const [editPlayerIds, setEditPlayerIds] = useState<string[]>([])
+  const [editRosterFilterSeries, setEditRosterFilterSeries] = useState('')
+  const [columnTab, setColumnTab] = useState<Record<string, 'partidos' | 'plantel'>>({})
+  const [players, setPlayers] = useState<Player[]>([])
 
   async function reload() {
     if (!accessToken) return
-    const [tournamentsData, seriesData, matchesData] = await Promise.all([
+    const [tournamentsData, seriesData, matchesData, playersData] = await Promise.all([
       apiFetch<Tournament[]>('/api/tournaments', { authToken: accessToken }),
       apiFetch<Series[]>('/api/series', { authToken: accessToken }),
       apiFetch<Match[]>('/api/matches', { authToken: accessToken }),
+      apiFetch<Player[]>('/api/players?active=true', { authToken: accessToken }),
     ])
     setItems(tournamentsData)
     setSeries(seriesData)
     setMatches(matchesData)
+    setPlayers(Array.isArray(playersData) ? playersData : [])
   }
 
   const seriesOptions = useMemo(() => series.filter((s) => s.active), [series])
   const seriesById = useMemo(() => Object.fromEntries(series.map((s) => [s.id, s])), [series])
+  const playersById = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
   // Torneos: filtro solo por año (se muestran todos los torneos del año)
   const itemsFiltrados = useMemo(() => items.filter((t) => t.season_year === filterYear), [items, filterYear])
   const yearOptions = useMemo(() => {
@@ -253,7 +263,7 @@ export function TournamentsPage() {
         }
       >
         {canAdmin ? (
-          <Button variant="primary" icon={<IconPlus />} onClick={() => { setCreateFieldErrors({}); setCreateSeriesIds([]); setOpen(true) }}>
+          <Button variant="primary" icon={<IconPlus />} onClick={() => { setCreateFieldErrors({}); setCreateSeriesIds([]); setCreatePlayerIds([]); setOpen(true) }}>
             Nuevo torneo
           </Button>
         ) : null}
@@ -304,6 +314,7 @@ export function TournamentsPage() {
                           : null,
                       active: true,
                       series_ids: createSeriesIds,
+                      player_ids: createPlayerIds.length > 0 ? createPlayerIds : [],
                       start_month: startMonth.trim() || null,
                       end_month: endMonth.trim() || null,
                     }),
@@ -376,6 +387,33 @@ export function TournamentsPage() {
               {seriesOptions.length === 0 ? <span className="text-xs text-slate-500 dark:text-slate-400">No hay series activas.</span> : null}
             </div>
           </div>
+          {createSeriesIds.length > 0 ? (
+            <div className="sm:col-span-3">
+              <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Plantel (opcional)</div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Si no seleccionas jugadores, se consideran todos los de las series. Si seleccionas, solo esos jugarán en el torneo.</p>
+              <div className="mt-2 max-h-48 overflow-y-auto rounded border border-slate-200 dark:border-slate-600">
+                {players.filter((p) => createSeriesIds.includes(p.primary_series_id))
+                  .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '', 'es') || (a.first_name || '').localeCompare(b.first_name || '', 'es'))
+                  .map((p) => (
+                    <label key={p.id} className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-2 text-sm last:border-0 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={createPlayerIds.includes(p.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setCreatePlayerIds((prev) => [...prev, p.id])
+                          else setCreatePlayerIds((prev) => prev.filter((id) => id !== p.id))
+                        }}
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                      />
+                      {p.first_name} {p.last_name} {seriesById[p.primary_series_id] ? `(${seriesById[p.primary_series_id].name})` : ''}
+                    </label>
+                  ))}
+                {players.filter((p) => createSeriesIds.includes(p.primary_series_id)).length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">No hay jugadores en las series seleccionadas.</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <div className="sm:col-span-3">
             <div className="text-sm font-medium">Ubicación (mapa)</div>
             <label className="mt-2 block text-sm">
@@ -404,6 +442,7 @@ export function TournamentsPage() {
       <Modal
         open={editOpen && canAdmin}
         title="Editar torneo"
+        maxWidthClassName="sm:max-w-5xl"
         onClose={() => {
           if (editing) return
           setError(null)
@@ -437,6 +476,7 @@ export function TournamentsPage() {
                       season_year: editYear,
                       active: editActive,
                       series_ids: editSeriesIds,
+                      player_ids: editPlayerIds,
                       start_month: editStartMonth.trim() || null,
                       end_month: editEndMonth.trim() || null,
                       location:
@@ -464,40 +504,44 @@ export function TournamentsPage() {
           </div>
         }
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {error ? <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200 sm:col-span-3">{error}</div> : null}
-          <label className="block text-sm text-slate-700 dark:text-slate-300 sm:col-span-2">
-            Nombre
-            <input className={`mt-1 sf-input ${editFieldErrors.editName ? 'sf-input-invalid' : ''}`} value={editName} onChange={(e) => { setEditName(e.target.value); setEditFieldErrors((p) => (p.editName ? { ...p, editName: false } : p)) }} />
-            {editFieldErrors.editName && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
-          </label>
-          <label className="block text-sm text-slate-700 dark:text-slate-300">
-            Año
-            <input
-              className="mt-1 sf-input"
-              type="number"
-              min={2000}
-              max={2100}
-              value={editYear}
-              onChange={(e) => setEditYear(Number(e.target.value))}
-              required
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 sm:col-span-3">
-            <Switch checked={editActive} onChange={setEditActive} aria-label="Activo" size="sm" />
-            <span>Activo</span>
-          </label>
-          <div className="sm:col-span-3 grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {error ? <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200 lg:col-span-2">{error}</div> : null}
+          {/* Columna izquierda: datos del torneo */}
+          <div className="space-y-3">
             <label className="block text-sm text-slate-700 dark:text-slate-300">
+              Nombre
+              <input className={`mt-1 w-full sf-input ${editFieldErrors.editName ? 'sf-input-invalid' : ''}`} value={editName} onChange={(e) => { setEditName(e.target.value); setEditFieldErrors((p) => (p.editName ? { ...p, editName: false } : p)) }} />
+              {editFieldErrors.editName && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm text-slate-700 dark:text-slate-300">
+                Año
+                <input
+                  className="mt-1 w-full sf-input"
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  value={editYear}
+                  onChange={(e) => setEditYear(Number(e.target.value))}
+                  required
+                />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <Switch checked={editActive} onChange={setEditActive} aria-label="Activo" size="sm" />
+              <span>Activo</span>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm text-slate-700 dark:text-slate-300">
               Mes inicio cuotas (YYYY-MM)
-              <input className="mt-1 sf-input w-full" type="month" value={editStartMonth} onChange={(e) => setEditStartMonth(e.target.value)} />
+              <input className="mt-1 w-full sf-input" type="month" value={editStartMonth} onChange={(e) => setEditStartMonth(e.target.value)} />
             </label>
             <label className="block text-sm text-slate-700 dark:text-slate-300">
               Mes término cuotas (YYYY-MM)
-              <input className="mt-1 sf-input w-full" type="month" value={editEndMonth} onChange={(e) => setEditEndMonth(e.target.value)} />
+              <input className="mt-1 w-full sf-input" type="month" value={editEndMonth} onChange={(e) => setEditEndMonth(e.target.value)} />
             </label>
           </div>
-          <div className="sm:col-span-3">
+          <div>
             <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Series que participan</div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
               {seriesOptions.map((s) => (
@@ -517,18 +561,18 @@ export function TournamentsPage() {
               {seriesOptions.length === 0 ? <span className="text-xs text-slate-500 dark:text-slate-400">No hay series activas.</span> : null}
             </div>
           </div>
-          <div className="sm:col-span-3">
+          <div>
             <div className="text-sm font-medium text-slate-900 dark:text-slate-100">Ubicación (mapa)</div>
             <label className="mt-2 block text-sm text-slate-700 dark:text-slate-300">
               URL Google Maps (opcional)
               <input
-                className="mt-1 sf-input"
+                className="mt-1 w-full sf-input"
                 type="url"
                 value={editLocMapUrl}
                 onChange={(e) => setEditLocMapUrl(e.target.value)}
                 placeholder="https://maps.app.goo.gl/..."
               />
-              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Pega un link de Google Maps (maps.app.goo.gl o google.com/maps).</div>
+              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Pega un link de Google Maps.</div>
               {editMapUrlHint ? <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">{editMapUrlHint}</div> : null}
             </label>
             <div className="mt-3">
@@ -536,8 +580,73 @@ export function TournamentsPage() {
               <div className="mt-2 text-xs text-slate-600 dark:text-slate-400">
                 Punto: <span className="font-medium">{editCoordText}</span>
               </div>
-              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Haz click en el mapa para seleccionar el punto.</div>
             </div>
+          </div>
+          </div>
+          {/* Columna derecha: plantel */}
+          <div className="border-t border-slate-200 pt-6 lg:border-t-0 lg:border-l lg:border-slate-200 lg:pl-6 lg:pt-0 dark:border-slate-600">
+            <div className="text-sm font-medium text-slate-700 dark:text-slate-300">Plantel (opcional)</div>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Si no seleccionas jugadores, se consideran todos los de las series.</p>
+            {editSeriesIds.length > 0 ? (
+              <>
+                <label className="mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Filtrar por serie
+                  <select
+                    className="mt-1 block w-full sf-input py-2 text-sm"
+                    value={editRosterFilterSeries}
+                    onChange={(e) => setEditRosterFilterSeries(e.target.value)}
+                    aria-label="Filtrar jugadores por serie"
+                  >
+                    <option value="">Todas las series</option>
+                    {editSeriesIds.map((sid) => (
+                      <option key={sid} value={sid}>
+                        {seriesById[sid]?.name ?? sid}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                    onClick={() => {
+                      const filtered = players
+                        .filter((p) => editSeriesIds.includes(p.primary_series_id) && (!editRosterFilterSeries || p.primary_series_id === editRosterFilterSeries))
+                        .map((p) => p.id)
+                      setEditPlayerIds((prev) => Array.from(new Set([...prev, ...filtered])))
+                    }}
+                  >
+                    Seleccionar todos
+                  </button>
+                </div>
+                <div className="mt-2 max-h-[32rem] overflow-y-auto rounded border border-slate-200 dark:border-slate-600">
+                  {players
+                    .filter((p) => editSeriesIds.includes(p.primary_series_id) && (!editRosterFilterSeries || p.primary_series_id === editRosterFilterSeries))
+                    .sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '', 'es') || (a.first_name || '').localeCompare(b.first_name || '', 'es'))
+                    .map((p) => (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-2 text-sm last:border-0 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={editPlayerIds.includes(p.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setEditPlayerIds((prev) => [...prev, p.id])
+                            else setEditPlayerIds((prev) => prev.filter((id) => id !== p.id))
+                          }}
+                          className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                        />
+                        {p.first_name} {p.last_name} {seriesById[p.primary_series_id] ? `(${seriesById[p.primary_series_id].name})` : ''}
+                      </label>
+                    ))}
+                  {players.filter((p) => editSeriesIds.includes(p.primary_series_id) && (!editRosterFilterSeries || p.primary_series_id === editRosterFilterSeries)).length === 0 ? (
+                    <p className="px-3 py-4 text-xs text-slate-500 dark:text-slate-400">
+                      {editRosterFilterSeries ? 'No hay jugadores en esta serie.' : 'No hay jugadores en las series seleccionadas.'}
+                    </p>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Selecciona al menos una serie para gestionar el plantel.</p>
+            )}
           </div>
         </div>
       </Modal>
@@ -563,15 +672,16 @@ export function TournamentsPage() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {itemsFiltrados.map((t) => {
             const bySeries = matchesByTournamentBySeries[String(t.id)] ?? {}
-            const seriesIds = filterSeriesId
-              ? (bySeries[filterSeriesId]?.length ? [filterSeriesId] : [])
-              : Object.keys(bySeries).sort((a, b) => {
-                  const na = seriesById[a]?.name ?? ''
-                  const nb = seriesById[b]?.name ?? ''
-                  return na.localeCompare(nb)
-                })
-            const hasMatches = seriesIds.some((sid) => (bySeries[sid]?.length ?? 0) > 0)
-            const matchCount = seriesIds.reduce((acc, sid) => acc + (bySeries[sid]?.length ?? 0), 0)
+            const displaySeriesIds = (
+              filterSeriesId && (t.series_ids ?? []).includes(filterSeriesId)
+                ? [filterSeriesId]
+                : (t.series_ids ?? [])
+            ).sort((a, b) => {
+              const na = seriesById[a]?.name ?? ''
+              const nb = seriesById[b]?.name ?? ''
+              return na.localeCompare(nb)
+            })
+            const matchCount = displaySeriesIds.reduce((acc, sid) => acc + (bySeries[sid]?.length ?? 0), 0)
             return (
               <div
                 key={t.id}
@@ -633,6 +743,8 @@ export function TournamentsPage() {
                               t.location?.lat != null && t.location?.lng != null ? { lat: t.location.lat, lng: t.location.lng } : null
                             )
                             setEditSeriesIds(Array.isArray(t.series_ids) ? [...t.series_ids] : [])
+                            setEditPlayerIds(Array.isArray(t.player_ids) ? [...t.player_ids] : [])
+                            setEditRosterFilterSeries('')
                             setEditOpen(true)
                           }}
                           title="Editar torneo"
@@ -695,67 +807,118 @@ export function TournamentsPage() {
                   ) : null}
                 </div>
 
-                {/* Partidos del torneo */}
-                {hasMatches ? (
+                {/* Partidos y plantel por serie (columnas) */}
+                {displaySeriesIds.length > 0 ? (
                   <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-600">
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Partidos
-                      {filterSeriesId ? ` · ${seriesById[filterSeriesId]?.name ?? 'serie'}` : ''}
-                    </h3>
-                    <div className="space-y-3">
-                      {seriesIds.map((sid) => {
+                    <div
+                      className="grid gap-4"
+                      style={{ gridTemplateColumns: `repeat(${displaySeriesIds.length}, minmax(0, 1fr))` }}
+                    >
+                      {displaySeriesIds.map((sid) => {
                         const list = bySeries[sid] ?? []
-                        if (list.length === 0) return null
+                        const roster =
+                          Array.isArray(t.player_ids) && t.player_ids.length > 0
+                            ? t.player_ids
+                                .map((pid) => playersById[pid])
+                                .filter((p): p is Player => !!p && p.primary_series_id === sid)
+                            : players.filter((p) => p.primary_series_id === sid && (t.series_ids ?? []).includes(sid))
                         const serieName = seriesById[sid]?.name ?? 'Serie'
                         return (
-                          <div key={sid}>
-                            <div className="mb-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
-                              {serieName}
+                          <div
+                            key={sid}
+                            className="flex flex-col rounded-lg border border-slate-200 bg-slate-50/50 dark:border-slate-600 dark:bg-slate-800/30"
+                          >
+                            <div className="border-b border-slate-200 px-3 py-2 dark:border-slate-600">
+                              <SeriesBadge seriesId={sid} name={serieName} color={seriesById[sid]?.color} />
                             </div>
-                            <ul className="space-y-1">
-                              {list.map((m) => {
-                                const hasScore = m.status?.code === 'jugado' && m.our_goals != null && m.opponent_goals != null
-                                const scoreColor =
-                                  !hasScore
-                                    ? 'text-slate-600 dark:text-slate-400'
-                                    : (m.our_goals ?? 0) > (m.opponent_goals ?? 0)
-                                      ? 'text-emerald-600 dark:text-emerald-400'
-                                      : (m.our_goals ?? 0) < (m.opponent_goals ?? 0)
-                                        ? 'text-rose-600 dark:text-rose-400'
-                                        : 'text-slate-500 dark:text-slate-400'
-                                const dateLabel = m.match_date ? formatDateDDMMYYYY(m.match_date) : ''
-                                return (
-                                  <li key={m.id}>
-                                    <Link
-                                      to={`/matches/${m.id}`}
-                                      className="flex flex-wrap items-center gap-x-2 rounded py-0.5 text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                    >
-                                      <span className="text-slate-700 dark:text-slate-300">vs {m.opponent}</span>
-                                      {hasScore ? (
-                                        <span className={'font-semibold tabular-nums ' + scoreColor}>
-                                          {m.our_goals}–{m.opponent_goals}
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-500 dark:text-slate-400">
-                                          {dateLabel}
-                                          {m.status?.label ? ` · ${m.status.label}` : ''}
-                                        </span>
-                                      )}
-                                    </Link>
-                                  </li>
-                                )
-                              })}
-                            </ul>
+                            <div className="flex flex-1 flex-col p-0">
+                              <div className="flex border-b border-slate-200 dark:border-slate-600">
+                                <button
+                                  type="button"
+                                  onClick={() => setColumnTab((prev) => ({ ...prev, [`${t.id}_${sid}`]: 'partidos' }))}
+                                  className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                                    (columnTab[`${t.id}_${sid}`] ?? 'partidos') === 'partidos'
+                                      ? 'border-b-2 border-slate-900 bg-slate-100/80 text-slate-900 dark:border-slate-100 dark:bg-slate-700/50 dark:text-slate-100'
+                                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/30 dark:hover:text-slate-300'
+                                  }`}
+                                >
+                                  Partidos {list.length > 0 ? `(${list.length})` : ''}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setColumnTab((prev) => ({ ...prev, [`${t.id}_${sid}`]: 'plantel' }))}
+                                  className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                                    (columnTab[`${t.id}_${sid}`] ?? 'partidos') === 'plantel'
+                                      ? 'border-b-2 border-slate-900 bg-slate-100/80 text-slate-900 dark:border-slate-100 dark:bg-slate-700/50 dark:text-slate-100'
+                                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700/30 dark:hover:text-slate-300'
+                                  }`}
+                                >
+                                  Plantel ({roster.length})
+                                </button>
+                              </div>
+                              <div className="min-h-[4rem] p-3">
+                                {(columnTab[`${t.id}_${sid}`] ?? 'partidos') === 'partidos' ? (
+                                  list.length > 0 ? (
+                                    <ul className="space-y-1">
+                                      {list.map((m) => {
+                                        const hasScore = m.status?.code === 'jugado' && m.our_goals != null && m.opponent_goals != null
+                                        const scoreColor =
+                                          !hasScore
+                                            ? 'text-slate-600 dark:text-slate-400'
+                                            : (m.our_goals ?? 0) > (m.opponent_goals ?? 0)
+                                              ? 'text-emerald-600 dark:text-emerald-400'
+                                              : (m.our_goals ?? 0) < (m.opponent_goals ?? 0)
+                                                ? 'text-rose-600 dark:text-rose-400'
+                                                : 'text-slate-500 dark:text-slate-400'
+                                        const dateLabel = m.match_date ? formatDateDDMMYYYY(m.match_date) : ''
+                                        return (
+                                          <li key={m.id}>
+                                            <Link
+                                              to={`/matches/${m.id}`}
+                                              className="flex flex-wrap items-center gap-x-2 rounded py-0.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/50"
+                                            >
+                                              <span className="text-slate-700 dark:text-slate-300">vs {m.opponent}</span>
+                                              {hasScore ? (
+                                                <span className={'font-semibold tabular-nums ' + scoreColor}>
+                                                  {m.our_goals}–{m.opponent_goals}
+                                                </span>
+                                              ) : (
+                                                <span className="text-slate-500 dark:text-slate-400">
+                                                  {dateLabel}
+                                                  {m.status?.label ? ` · ${m.status.label}` : ''}
+                                                </span>
+                                              )}
+                                            </Link>
+                                          </li>
+                                        )
+                                      })}
+                                    </ul>
+                                  ) : (
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">Sin partidos</p>
+                                  )
+                                ) : roster.length > 0 ? (
+                                  <ul className="space-y-0.5 text-xs text-slate-700 dark:text-slate-300">
+                                    {roster
+                                      .sort((a, b) => (a.first_name || '').localeCompare(b.first_name || '', 'es') || (a.last_name || '').localeCompare(b.last_name || '', 'es'))
+                                      .map((p) => (
+                                        <li key={p.id}>
+                                          {p.first_name} {p.last_name}
+                                        </li>
+                                      ))}
+                                  </ul>
+                                ) : (
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {Array.isArray(t.player_ids) && t.player_ids.length > 0 ? 'Ninguno inscrito' : 'Sin jugadores'}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         )
                       })}
                     </div>
                   </div>
-                ) : (
-                  <div className="border-t border-slate-100 px-4 py-3 dark:border-slate-600">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Sin partidos asociados aún.</p>
-                  </div>
-                )}
+                ) : null}
               </div>
             )
           })}

@@ -4,7 +4,7 @@ import { apiFetch } from '../app/api'
 import { useTheme } from '../app/theme'
 import { Button } from '../ui/Button'
 import { IconSend } from '../ui/Icons'
-import { formatDateDDMMYYYY } from '../utils/date'
+import { SeriesBadge } from '../ui/SeriesBadge'
 import { formatRutDisplay, normalizeRut, RUT_INVALID_MESSAGE, validateRut } from '../utils/rut'
 
 type PublicInfo = {
@@ -15,9 +15,54 @@ type PublicInfo = {
   call_time: string
   venue: string
   field_number?: string | null
+  tournament_name?: string | null
+  tournament_season_year?: number | null
 }
 
 type Status = 'pending' | 'confirmed' | 'declined'
+
+function getCalendarParts(d: string): { dow: string; day: string; month: string } {
+  try {
+    const [y, m, day] = d.split('-').map(Number)
+    const date = new Date(y, m - 1, day)
+    const dowIndex = date.getDay()
+    const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'] as const
+    const MONTHS = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'] as const
+    return {
+      dow: WEEKDAYS[dowIndex] ?? '',
+      day: String(day).padStart(2, '0'),
+      month: MONTHS[m - 1] ?? '',
+    }
+  } catch {
+    return { dow: '', day: '', month: '' }
+  }
+}
+
+function IconClock(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  )
+}
+function IconMapPin(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 21s-6-4.35-6-10a6 6 0 0 1 12 0c0 5.65-6 10-6 10Z" />
+      <circle cx="12" cy="11" r="2.5" />
+    </svg>
+  )
+}
+function IconTrophy(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22" /><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </svg>
+  )
+}
 
 function IconMoon() {
   return (
@@ -44,6 +89,7 @@ export function PublicConfirmPage() {
   const [statusVal, setStatusVal] = useState<Status>('confirmed')
   const [comment, setComment] = useState('')
   const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({})
   const id = publicLinkId || ''
@@ -71,16 +117,48 @@ export function PublicConfirmPage() {
       <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Confirmar asistencia</h1>
       {info ? (
         <div className="sf-card mt-4 p-4">
-          <div className="text-sm text-slate-600 dark:text-slate-400">{info.series_name}</div>
-          <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
-            vs {info.opponent}
-          </div>
-          <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-            {formatDateDDMMYYYY(info.match_date)} · citación {info.call_time}
-          </div>
-          <div className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-            {info.venue}
-            {info.field_number ? ` · cancha ${info.field_number}` : ''}
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+            <div className="rounded-lg bg-slate-100 px-3 py-2 text-center leading-tight dark:bg-slate-700">
+              <span className="block text-[10px] font-semibold tracking-wide text-slate-500 dark:text-slate-400">
+                {getCalendarParts(info.match_date).dow}
+              </span>
+              <span className="block text-lg font-bold text-slate-900 dark:text-slate-100">
+                {getCalendarParts(info.match_date).day}
+              </span>
+              <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-300">
+                {getCalendarParts(info.match_date).month}
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <SeriesBadge seriesId={info.series_name} name={info.series_name} />
+              </div>
+              <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                Próximo: <span className="font-medium text-primary">vs {info.opponent}</span>
+              </p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                <span className="inline-flex items-center gap-1">
+                  <IconClock className="h-3.5 w-3.5" aria-hidden />
+                  <span>Citación {info.call_time}</span>
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <IconMapPin className="h-3.5 w-3.5" aria-hidden />
+                  <span>
+                    {info.venue}
+                    {info.field_number ? ` Cancha ${info.field_number}` : ''}
+                  </span>
+                </span>
+                {info.tournament_name && (
+                  <span className="inline-flex items-center gap-1">
+                    <IconTrophy className="h-3.5 w-3.5" aria-hidden />
+                    <span>
+                      {info.tournament_name}
+                      {info.tournament_season_year != null ? ` ${info.tournament_season_year}` : ''}
+                    </span>
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       ) : (
@@ -89,6 +167,17 @@ export function PublicConfirmPage() {
         </div>
       )}
 
+      {submitted ? (
+        <div className="sf-card mt-4 flex flex-col items-center justify-center gap-3 p-8 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400" aria-hidden>
+            ✓
+          </div>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">¡Listo!</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Tu respuesta fue guardada. Puedes cerrar esta pestaña.
+          </p>
+        </div>
+      ) : (
       <form
         className="sf-card mt-4 space-y-3 p-4"
         onSubmit={async (e) => {
@@ -116,7 +205,7 @@ export function PublicConfirmPage() {
                 comment: comment || null,
               }),
             })
-            setMsg('Respuesta guardada. Gracias.')
+            setSubmitted(true)
           } catch (err: unknown) {
             setMsg(err instanceof Error ? err.message : 'No se pudo validar')
           } finally {
@@ -185,10 +274,11 @@ export function PublicConfirmPage() {
 
         {msg && <div className="rounded-md bg-slate-100 p-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">{msg}</div>}
 
-        <Button type="submit" variant="primary" icon={<IconSend />} loading={loading} className="w-full">
+        <Button type="submit" variant="primary" icon={<IconSend />} loading={loading} className="w-full" disabled={loading}>
           {loading ? 'Enviando…' : 'Enviar'}
         </Button>
       </form>
+      )}
       </div>
     </div>
   )

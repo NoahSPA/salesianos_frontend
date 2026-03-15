@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Clock, Grid, LayoutDashboard, Pencil, Scale, Trash2, Users } from 'lucide-react'
 import { apiFetch, apiOpenBlobInNewTab, ERROR_MENSAJE_ES } from '../app/api'
-import { formatDateTimeDDMMYYYY } from '../utils/date'
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '../utils/date'
 import { useAuth } from '../app/auth'
 import { Button } from '../ui/Button'
 import { IconArrowRight, IconCheck, IconPlus, IconTrash2, IconX } from '../ui/Icons'
@@ -15,13 +15,22 @@ type Payment = {
   player_id: string
   player_name?: string | null
   amount: number
+  amount_total?: number
   currency: string
-  status: 'pending_validation' | 'validated' | 'rejected'
+  status: 'pending_validation' | 'validated' | 'confirmed' | 'rejected'
   transfer_ref?: string | null
+  reference_number?: string | null
   notes_player?: string | null
+  notes?: string | null
   notes_treasurer?: string | null
+  payment_method?: string | null
+  payment_date?: string | null
   created_at?: string
   target_month?: string | null
+  tournament_id?: string | null
+  tournament_name?: string | null
+  series_id?: string | null
+  series_name?: string | null
   receipt_file_id?: string | null
 }
 
@@ -45,6 +54,7 @@ type FeeRule = {
   id: string
   scope: 'general' | 'series' | 'player'
   scope_id: string | null
+  tournament_id?: string | null
   amount: number
   currency: string
   active: boolean
@@ -109,9 +119,9 @@ type PlayerPeriodCell = { status: 'pagado' | 'pendiente'; amount: number; paid: 
 type PlayerPeriodRow = { player_id: string; player_name: string; series_id: string; periods: Record<string, PlayerPeriodCell> }
 type PlayerPeriodMatrix = { periods: string[]; players: PlayerPeriodRow[] }
 
-type TabId = 'dashboard' | 'pending' | 'register' | 'status' | 'matrix' | 'rules'
+type TabId = 'dashboard' | 'pending' | 'history' | 'register' | 'status' | 'matrix' | 'rules'
 
-const VALID_TABS: TabId[] = ['dashboard', 'pending', 'register', 'status', 'matrix', 'rules']
+const VALID_TABS: TabId[] = ['dashboard', 'pending', 'history', 'register', 'status', 'matrix', 'rules']
 
 export function TreasuryPage() {
   const { accessToken, me } = useAuth()
@@ -132,8 +142,10 @@ export function TreasuryPage() {
 
   const [pending, setPending] = useState<Payment[]>([])
   const [series, setSeries] = useState<Series[]>([])
+  const [tournaments, setTournaments] = useState<{ id: string; name: string; season_year?: number; series_ids?: string[] }[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [seriesId, setSeriesId] = useState<string>('')
+  const [tournamentId, setTournamentId] = useState<string>('')
   const [feeStatus, setFeeStatus] = useState<PlayerStatus[]>([])
   const [feeRules, setFeeRules] = useState<FeeRule[]>([])
   const [collectionBySeries, setCollectionBySeries] = useState<CollectionBySeries[]>([])
@@ -153,15 +165,16 @@ export function TreasuryPage() {
   const [statusFilter, setStatusFilter] = useState<'todos' | 'al_dia' | 'pendiente' | 'atrasado'>('todos')
 
   const [playerId, setPlayerId] = useState('')
-  const [amount, setAmount] = useState(150000)
+  const [amount, setAmount] = useState(0)
   const [paymentPeriod, setPaymentPeriod] = useState(() => {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
   const [transferRef, setTransferRef] = useState('')
-  const [notesPlayer, setNotesPlayer] = useState('')
   const [saving, setSaving] = useState(false)
   const [registerOpen, setRegisterOpen] = useState(false)
+  const [registerTournamentId, setRegisterTournamentId] = useState('')
+  const [tabBeforeRegister, setTabBeforeRegister] = useState<TabId | null>(null)
   const [feeForRegister, setFeeForRegister] = useState<{ fee_amount: number | null; fee_source: string | null } | null>(null)
 
   const [actionModal, setActionModal] = useState<{ payment: Payment; action: 'validate' | 'reject' } | null>(null)
@@ -174,6 +187,7 @@ export function TreasuryPage() {
   const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null)
   const [ruleScope, setRuleScope] = useState<'general' | 'series' | 'player'>('general')
   const [ruleScopeId, setRuleScopeId] = useState('')
+  const [ruleTournamentId, setRuleTournamentId] = useState('')
   const [ruleAmount, setRuleAmount] = useState(15000)
   const [registerFieldErrors, setRegisterFieldErrors] = useState<Record<string, boolean>>({})
   const [rulesFieldErrors, setRulesFieldErrors] = useState<Record<string, boolean>>({})
@@ -182,6 +196,9 @@ export function TreasuryPage() {
 
   const [unpaidPeriodsData, setUnpaidPeriodsData] = useState<UnpaidPeriodsData | null>(null)
   const [unpaidPeriodsLoading, setUnpaidPeriodsLoading] = useState(false)
+  const [loadingStatus, setLoadingStatus] = useState(false)
+  const [paymentHistory, setPaymentHistory] = useState<Payment[]>([])
+  const [loadingPaymentHistory, setLoadingPaymentHistory] = useState(false)
 
   const canTreasury = me?.role === 'tesorero' || me?.role === 'admin'
 
@@ -191,16 +208,21 @@ export function TreasuryPage() {
     try {
       // Carga base: pendientes, series, jugadores y reglas.
       // Totales, períodos y breakdown se cargan en paralelo en efectos (reloadTotals / reloadPeriods / reloadBreakdown)
-      const [pays, ss, pl, rules] = await Promise.all([
+      const [pays, ss, pl, rules, tournamentsList] = await Promise.all([
         apiFetch<Payment[]>('/api/payments?status=pending_validation&limit=200', { authToken: accessToken }),
         apiFetch<Series[]>('/api/series', { authToken: accessToken }),
         apiFetch<Player[]>('/api/players?active=true', { authToken: accessToken }),
-        apiFetch<FeeRule[]>('/api/fees/rules', { authToken: accessToken }),
+        apiFetch<FeeRule[]>(
+          `/api/fees/rules${tournamentId ? `?tournament_id=${encodeURIComponent(tournamentId)}` : ''}`,
+          { authToken: accessToken },
+        ),
+        apiFetch<{ id: string; name: string; season_year?: number; series_ids?: string[] }[]>('/api/tournaments', { authToken: accessToken }),
       ])
-      setPending(pays)
-      setSeries(ss)
-      setPlayers(pl)
-      setFeeRules(rules)
+      setPending(Array.isArray(pays) ? pays : [])
+      setSeries(Array.isArray(ss) ? ss : [])
+      setTournaments(Array.isArray(tournamentsList) ? tournamentsList : [])
+      setPlayers(Array.isArray(pl) ? pl : [])
+      setFeeRules(Array.isArray(rules) ? rules : [])
     } finally {
       setDashboardLoading(false)
     }
@@ -209,7 +231,10 @@ export function TreasuryPage() {
   function reloadTotals() {
     if (!accessToken) return
     setLoadingTotals(true)
-    const qs = seriesId ? `?series_id=${encodeURIComponent(seriesId)}` : ''
+    const params = new URLSearchParams()
+    if (seriesId) params.set('series_id', seriesId)
+    if (tournamentId) params.set('tournament_id', tournamentId)
+    const qs = params.toString() ? `?${params}` : ''
     apiFetch<{ total_collected: number; total_pending: number }>(`/api/fees/dashboard-totals${qs}`, { authToken: accessToken })
       .then((r) => {
         setTotalCollected(r?.total_collected ?? 0)
@@ -225,7 +250,10 @@ export function TreasuryPage() {
   function reloadPeriods() {
     if (!accessToken) return
     setLoadingPeriods(true)
-    const qs = seriesId ? `?series_id=${encodeURIComponent(seriesId)}` : ''
+    const params = new URLSearchParams()
+    if (seriesId) params.set('series_id', seriesId)
+    if (tournamentId) params.set('tournament_id', tournamentId)
+    const qs = params.toString() ? `?${params}` : ''
     apiFetch<{ periods: PeriodSummary[] }>(`/api/fees/dashboard-periods${qs}`, { authToken: accessToken })
       .then((r) => setPeriodSummary(Array.isArray(r?.periods) ? r.periods : []))
       .catch(() => setPeriodSummary([]))
@@ -235,7 +263,10 @@ export function TreasuryPage() {
   function reloadBreakdown() {
     if (!accessToken) return
     setLoadingBreakdown(true)
-    const qs = seriesId ? `?series_id=${encodeURIComponent(seriesId)}` : ''
+    const params = new URLSearchParams()
+    if (seriesId) params.set('series_id', seriesId)
+    if (tournamentId) params.set('tournament_id', tournamentId)
+    const qs = params.toString() ? `?${params}` : ''
     apiFetch<{
       collection_by_series?: CollectionBySeries[]
       collection_by_tournament?: CollectionByTournament[]
@@ -254,28 +285,57 @@ export function TreasuryPage() {
       .finally(() => setLoadingBreakdown(false))
   }
 
+  function reloadPaymentHistory() {
+    if (!accessToken) return
+    setLoadingPaymentHistory(true)
+    const params = new URLSearchParams()
+    if (seriesId) params.set('series_id', seriesId)
+    if (tournamentId) params.set('tournament_id', tournamentId)
+    params.set('limit', '500')
+    const qs = params.toString() ? `?${params}` : '?limit=500'
+    apiFetch<Payment[]>(`/api/payments${qs}`, { authToken: accessToken })
+      .then((r) => setPaymentHistory(Array.isArray(r) ? r : []))
+      .catch(() => setPaymentHistory([]))
+      .finally(() => setLoadingPaymentHistory(false))
+  }
+
   async function reloadMatrix() {
     if (!accessToken) return
     const qs = new URLSearchParams()
     if (seriesId) qs.set('series_id', seriesId)
-    const data = await apiFetch<PlayerPeriodMatrix>(`/api/fees/player-period-matrix${qs.toString() ? `?${qs}` : ''}`, { authToken: accessToken })
-    setPlayerMatrix(data)
+    if (tournamentId) qs.set('tournament_id', tournamentId)
+    try {
+      const data = await apiFetch<PlayerPeriodMatrix>(`/api/fees/player-period-matrix${qs.toString() ? `?${qs}` : ''}`, { authToken: accessToken })
+      setPlayerMatrix(data ?? { periods: [], players: [] })
+    } catch {
+      setPlayerMatrix({ periods: [], players: [] })
+    }
   }
 
   async function reloadStatus() {
     if (!accessToken) return
     const qs = new URLSearchParams()
     if (seriesId) qs.set('series_id', seriesId)
-    const st = await apiFetch<PlayerStatus[]>(`/api/fees/status${qs.toString() ? `?${qs}` : ''}`, {
-      authToken: accessToken,
-    })
-    setFeeStatus(st)
+    if (tournamentId) qs.set('tournament_id', tournamentId)
+    try {
+      const st = await apiFetch<PlayerStatus[]>(`/api/fees/status${qs.toString() ? `?${qs}` : ''}`, {
+        authToken: accessToken,
+      })
+      setFeeStatus(Array.isArray(st) ? st : [])
+    } catch {
+      setFeeStatus([])
+    }
   }
 
   async function reloadRules() {
     if (!accessToken) return
-    const rules = await apiFetch<FeeRule[]>('/api/fees/rules', { authToken: accessToken })
-    setFeeRules(rules)
+    const qs = tournamentId ? `?tournament_id=${encodeURIComponent(tournamentId)}` : ''
+    try {
+      const rules = await apiFetch<FeeRule[]>(`/api/fees/rules${qs}`, { authToken: accessToken })
+      setFeeRules(Array.isArray(rules) ? rules : [])
+    } catch {
+      setFeeRules([])
+    }
   }
 
   async function openUnpaidPeriods(tournamentId: string) {
@@ -305,28 +365,47 @@ export function TreasuryPage() {
     reloadTotals()
     reloadPeriods()
     reloadBreakdown()
+    reloadRules().catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, seriesId])
+  }, [accessToken, seriesId, tournamentId])
+
+  // Si se filtra por serie y el torneo seleccionado no la tiene, limpiar torneo
+  useEffect(() => {
+    if (!seriesId || !tournamentId) return
+    const t = tournaments.find((x) => x.id === tournamentId)
+    if (t && !(t.series_ids ?? []).includes(seriesId)) {
+      setTournamentId('')
+    }
+  }, [seriesId, tournamentId, tournaments])
 
   useEffect(() => {
-    if (!accessToken || tab !== 'status') return
-    reloadStatus().catch((e: unknown) => setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES))
+    if (!accessToken || (tab !== 'status' && tab !== 'matrix')) return
+    setLoadingStatus(true)
+    reloadStatus()
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES))
+      .finally(() => setLoadingStatus(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seriesId, tab])
+  }, [seriesId, tournamentId, tab])
 
   useEffect(() => {
     if (!accessToken || tab !== 'matrix') return
     reloadMatrix().catch((e: unknown) => setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, tab, seriesId])
+  }, [accessToken, tab, seriesId, tournamentId])
 
   useEffect(() => {
-    if (!accessToken || !registerOpen || !playerId.trim() || !paymentPeriod) {
+    if (!accessToken || tab !== 'history') return
+    reloadPaymentHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, tab, seriesId, tournamentId])
+
+  useEffect(() => {
+    if (!accessToken || !registerOpen || !playerId.trim() || !paymentPeriod || !registerTournamentId) {
       setFeeForRegister(null)
       return
     }
     apiFetch<{ fee_amount: number | null; fee_source: string | null }>(
-      `/api/fees/player-fee?player_id=${encodeURIComponent(playerId)}&year_month=${encodeURIComponent(paymentPeriod)}`,
+      `/api/fees/player-fee?player_id=${encodeURIComponent(playerId)}&year_month=${encodeURIComponent(paymentPeriod)}&tournament_id=${encodeURIComponent(registerTournamentId)}`,
       { authToken: accessToken },
     )
       .then((r) => {
@@ -334,20 +413,40 @@ export function TreasuryPage() {
         setAmount(r.fee_amount != null ? r.fee_amount : 0)
       })
       .catch(() => setFeeForRegister(null))
-  }, [accessToken, registerOpen, playerId, paymentPeriod])
-
-  const pendingTotal = useMemo(() => pending.reduce((s, p) => s + (p.amount || 0), 0), [pending])
+  }, [accessToken, registerOpen, playerId, paymentPeriod, registerTournamentId])
 
   const playersSorted = useMemo(
     () =>
       [...players].sort((a, b) => {
-        const c = (a.first_name || '').localeCompare(b.first_name || '', 'es', { sensitivity: 'base' })
-        return c !== 0 ? c : (a.last_name || '').localeCompare(b.last_name || '', 'es', { sensitivity: 'base' })
+        const c = (a.last_name || '').localeCompare(b.last_name || '', 'es', { sensitivity: 'base' })
+        return c !== 0 ? c : (a.first_name || '').localeCompare(b.first_name || '', 'es', { sensitivity: 'base' })
       }),
     [players],
   )
+  const tournamentById = useMemo(() => Object.fromEntries(tournaments.map((t) => [t.id, t])), [tournaments])
+  const playersForRegister = useMemo(() => {
+    const tid = registerOpen ? registerTournamentId : tournamentId
+    if (!tid) return []
+    const t = tournamentById[tid]
+    const pids = (t as { player_ids?: string[] })?.player_ids ?? []
+    const sids = t?.series_ids ?? []
+    const filtered = pids.length > 0
+      ? playersSorted.filter((p) => pids.includes(p.id))
+      : (sids.length === 0 ? playersSorted : playersSorted.filter((p) => sids.includes(p.primary_series_id)))
+    return [...filtered].sort((a, b) => {
+      const c = (a.first_name || '').localeCompare(b.first_name || '', 'es', { sensitivity: 'base' })
+      return c !== 0 ? c : (a.last_name || '').localeCompare(b.last_name || '', 'es', { sensitivity: 'base' })
+    })
+  }, [playersSorted, registerOpen, registerTournamentId, tournamentId, tournamentById])
   const seriesById = useMemo(() => Object.fromEntries(series.map((s) => [s.id, s])), [series])
   const playersById = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
+  const pendingFiltered = useMemo(() => {
+    let list = pending
+    if (tournamentId) list = list.filter((p) => p.tournament_id === tournamentId)
+    if (seriesId) list = list.filter((p) => playersById[p.player_id]?.primary_series_id === seriesId)
+    return list
+  }, [pending, tournamentId, seriesId, playersById])
+  const pendingTotal = useMemo(() => pendingFiltered.reduce((s, p) => s + (p.amount || 0), 0), [pendingFiltered])
   const statusByPlayerId = useMemo(
     () => Object.fromEntries(feeStatus.map((s) => [s.player_id, s.status] as const)),
     [feeStatus],
@@ -393,8 +492,6 @@ export function TreasuryPage() {
     return lines.join('\n')
   }, [pendingSummaryRows])
 
-  if (!canTreasury) return null
-
   function ruleScopeLabel(r: FeeRule) {
     if (r.scope === 'general') return 'General'
     if (r.scope === 'series' && r.scope_id) return seriesById[r.scope_id]?.name ?? r.scope_id
@@ -402,13 +499,31 @@ export function TreasuryPage() {
     return r.scope_id ?? '-'
   }
 
+  const feeRulesFiltered = useMemo(() => {
+    if (!seriesId) return feeRules
+    return feeRules.filter((r) => {
+      if (r.scope === 'general') return true
+      if (r.scope === 'series' && r.scope_id === seriesId) return true
+      if (r.scope === 'player' && r.scope_id && playersById[r.scope_id]?.primary_series_id === seriesId) return true
+      return false
+    })
+  }, [feeRules, seriesId, playersById])
+
+  const feeRulesSorted = useMemo(() => {
+    const order: Record<string, number> = { general: 0, series: 1, player: 2 }
+    return [...feeRulesFiltered].sort((a, b) => (order[a.scope] ?? 99) - (order[b.scope] ?? 99))
+  }, [feeRulesFiltered])
+
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Resumen', icon: <LayoutDashboard className="h-5 w-5" /> },
     { id: 'pending', label: 'Pendientes', icon: <Clock className="h-5 w-5" /> },
+    { id: 'history', label: 'Historial', icon: <Pencil className="h-5 w-5" /> },
     { id: 'status', label: 'Estados', icon: <Users className="h-5 w-5" /> },
     { id: 'matrix', label: 'Períodos', icon: <Grid className="h-5 w-5" /> },
     { id: 'rules', label: 'Reglas', icon: <Scale className="h-5 w-5" /> },
   ]
+
+  if (!canTreasury) return null
 
   return (
     <div className="space-y-3">
@@ -430,9 +545,9 @@ export function TreasuryPage() {
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3 dark:border-slate-600">
+            <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3 dark:border-slate-600">    
               <div className="flex flex-wrap items-center gap-2">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Series</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Serie</label>
                 <select
                   className="sf-input w-full min-w-0 py-2 text-sm sm:w-auto sm:min-w-[180px] sm:py-1.5"
                   value={seriesId}
@@ -445,8 +560,26 @@ export function TreasuryPage() {
                   ))}
                 </select>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Torneo</label>
+                <select
+                  className="sf-input w-full min-w-0 py-2 text-sm sm:w-auto sm:min-w-[180px] sm:py-1.5"
+                  value={tournamentId}
+                  onChange={(e) => setTournamentId(e.target.value)}
+                  aria-label="Filtrar por torneo"
+                >
+                  <option value="">Todos</option>
+                  {tournaments
+                    .filter((t) => !seriesId || (t.series_ids ?? []).includes(seriesId))
+                    .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.season_year ? ` (${t.season_year})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="ml-auto flex flex-wrap items-center gap-1">
-                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Estado</span>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300" title="Filtra en pestañas Estados y Períodos">Estado</span>
                 {(['todos', 'al_dia', 'pendiente', 'atrasado'] as const).map((s) => (
                   <button
                     key={s}
@@ -471,8 +604,10 @@ export function TreasuryPage() {
           variant="primary"
           icon={<IconPlus />}
           onClick={() => {
-            setTab('register')
+            setTabBeforeRegister(tab)
+            setTab('pending')
             setRegisterFieldErrors({})
+            setRegisterTournamentId(tournamentId ?? '')
             setRegisterOpen(true)
           }}
         >
@@ -517,11 +652,11 @@ export function TreasuryPage() {
                 <div className="sf-card flex h-16 items-center p-4">
                   <div className="h-4 w-48 animate-pulse rounded bg-slate-200 dark:bg-slate-700" aria-hidden />
                 </div>
-              ) : pending.length > 0 ? (
+              ) : pendingFiltered.length > 0 ? (
                 <div className="sf-card flex items-center justify-between p-4">
                   <div>
                     <div className="font-medium">Pagos por validar</div>
-                    <div className="text-sm text-slate-600 dark:text-slate-400">{pending.length} pagos · {clp(pendingTotal)}</div>
+                    <div className="text-sm text-slate-600 dark:text-slate-400">{pendingFiltered.length} pagos · {clp(pendingTotal)}</div>
                   </div>
                   <Button variant="secondary" icon={<IconArrowRight />} onClick={() => setTab('pending')}>
                     Ir a pendientes
@@ -538,19 +673,43 @@ export function TreasuryPage() {
                   Solo meses pasados y actuales. Al día = todos los jugadores pagaron su cuota.
                 </p>
                 {loadingPeriods ? (
-                  <div className="p-4 space-y-2" aria-hidden>
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <div key={i} className="flex gap-4">
-                        <div className="h-5 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-                        <div className="h-5 w-16 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-                        <div className="h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700 ml-auto" />
-                        <div className="h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-                      </div>
-                    ))}
+                  <div className="overflow-x-auto" aria-hidden>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          <th className="px-4 py-2">Período</th>
+                          <th className="px-4 py-2">Estado</th>
+                          <th className="px-4 py-2 text-right">Recaudado</th>
+                          <th className="px-4 py-2 text-right">Pendiente</th>
+                          <th className="px-4 py-2 text-center">Jugadores</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="px-4 py-2">
+                              <div className="h-5 w-28 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                            </td>
+                            <td className="px-4 py-2">
+                              <div className="h-6 w-16 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+                            </td>
+                            <td className="px-4 py-2 text-right">
+                              <div className="ml-auto h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700 inline-block" />
+                            </td>
+                            <td className="px-4 py-2 text-right">
+                              <div className="ml-auto h-5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700 inline-block" />
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              <div className="h-5 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700 inline-block" />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 ) : (periodSummary?.length ?? 0) === 0 ? (
                   <div className="p-6 text-sm text-slate-600 dark:text-slate-400">
-                    No hay períodos con cargos. Las cuotas se generan automáticamente al consultar.
+                    {(seriesId || tournamentId) ? 'No hay períodos para el filtro seleccionado.' : 'No hay períodos con cargos. Las cuotas se generan automáticamente al consultar.'}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -607,7 +766,9 @@ export function TreasuryPage() {
                       ))}
                     </div>
                   ) : collectionBySeries.length === 0 ? (
-                    <p className="p-3 text-xs text-slate-500 dark:text-slate-400">Sin datos</p>
+                    <p className="p-3 text-xs text-slate-500 dark:text-slate-400">
+                      {(seriesId || tournamentId) ? 'No hay datos para el filtro seleccionado.' : 'Sin datos de recaudación por serie.'}
+                    </p>
                   ) : (
                     <table className="w-full text-sm">
                       <tbody>
@@ -640,7 +801,9 @@ export function TreasuryPage() {
                       ))}
                     </div>
                   ) : collectionByTournament.length === 0 ? (
-                    <p className="p-3 text-xs text-slate-500 dark:text-slate-400">Sin datos</p>
+                    <p className="p-3 text-xs text-slate-500 dark:text-slate-400">
+                      {(seriesId || tournamentId) ? 'No hay datos para el filtro seleccionado.' : 'Sin datos de recaudación por torneo.'}
+                    </p>
                   ) : (
                     <table className="w-full text-sm">
                       <tbody>
@@ -686,7 +849,9 @@ export function TreasuryPage() {
                       ))}
                     </div>
                   ) : collectionByPlayer.length === 0 ? (
-                    <p className="p-3 text-xs text-slate-500 dark:text-slate-400">Sin datos</p>
+                    <p className="p-3 text-xs text-slate-500 dark:text-slate-400">
+                      {(seriesId || tournamentId) ? 'No hay datos para el filtro seleccionado.' : 'Sin datos de recaudación por jugador.'}
+                    </p>
                   ) : (
                     <table className="w-full text-sm">
                       <tbody>
@@ -780,30 +945,108 @@ export function TreasuryPage() {
         )}
       </Modal>
 
+      {tab === 'history' ? (
+        <div className="space-y-3">
+          <div className="sf-card overflow-hidden">
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              Historial de pagos
+            </div>
+            <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
+              Todos los pagos registrados. Usa los filtros serie/torneo del encabezado para acotar.
+            </p>
+            {loadingPaymentHistory ? (
+              <div className="overflow-x-auto p-4" aria-hidden>
+                <div className="space-y-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                    <div key={i} className="h-10 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                  ))}
+                </div>
+              </div>
+            ) : paymentHistory.length === 0 ? (
+              <div className="p-6 text-sm text-slate-600 dark:text-slate-400">
+                {(seriesId || tournamentId) ? 'No hay pagos para el filtro seleccionado.' : 'No hay pagos registrados.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      <th className="px-4 py-2">Jugador</th>
+                      <th className="px-4 py-2">Serie</th>
+                      <th className="px-4 py-2">Torneo</th>
+                      <th className="px-4 py-2">Fecha</th>
+                      <th className="px-4 py-2">Período</th>
+                      <th className="px-4 py-2 text-right">Monto</th>
+                      <th className="px-4 py-2">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paymentHistory.map((p) => {
+                      const isApproved = p.status === 'validated' || (p.status as string) === 'confirmed'
+                      const statusLabel = isApproved ? 'Validado' : p.status === 'rejected' ? 'Rechazado' : 'Pendiente validación'
+                      const statusClass = isApproved ? 'sf-badge-emerald' : p.status === 'rejected' ? 'sf-badge-rose' : 'sf-badge-amber'
+                      return (
+                        <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50/50 dark:border-slate-700 dark:hover:bg-slate-700/30">
+                          <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200">{p.player_name || p.player_id}</td>
+                          <td className="px-4 py-2 text-slate-700 dark:text-slate-300">{p.series_name ?? '—'}</td>
+                          <td className="px-4 py-2 text-slate-700 dark:text-slate-300">{p.tournament_name ?? '—'}</td>
+                          <td className="px-4 py-2 text-slate-700 dark:text-slate-300">
+                            {p.payment_date ? formatDateDDMMYYYY(p.payment_date) : p.created_at ? formatDateTimeDDMMYYYY(p.created_at) : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-slate-700 dark:text-slate-300">
+                            {p.target_month ? formatYearMonthLong(p.target_month) : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-right font-medium text-emerald-700 dark:text-emerald-300">
+                            {clp(p.amount_total ?? p.amount ?? 0)}
+                          </td>
+                          <td className="px-4 py-2">
+                            <span className={'sf-badge ' + statusClass}>{statusLabel}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {tab === 'pending' ? (
         <div className="space-y-2">
-          {pending.length === 0 ? (
-            <div className="sf-card p-4 text-sm text-slate-600 dark:text-slate-400">No hay pagos pendientes.</div>
+          {pendingFiltered.length === 0 ? (
+            <div className="sf-card p-4 text-sm text-slate-600 dark:text-slate-400">
+              {pending.length === 0 ? 'No hay pagos pendientes.' : 'No hay pagos que coincidan con el filtro serie/torneo.'}
+            </div>
           ) : (
-            pending.map((p) => (
+            pendingFiltered.map((p) => (
               <div key={p.id} className="sf-card p-4">
                 <div className="flex items-center justify-between">
                   <div className="font-medium text-slate-900 dark:text-slate-100">{p.player_name || p.player_id}</div>
                   <span className="sf-badge sf-badge-amber">pendiente</span>
                 </div>
-                <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                  {clp(p.amount)} · {p.created_at ? formatDateTimeDDMMYYYY(p.created_at) : '-'}
+                <div className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                  {p.tournament_name ? (
+                    <div><strong>Torneo:</strong> {p.tournament_name}</div>
+                  ) : null}
+                  <div><strong>Monto:</strong> {clp(p.amount_total ?? p.amount)}</div>
+                  {p.target_month ? (
+                    <div>
+                      <strong>Período:</strong> {formatYearMonthLong(p.target_month)}
+                      {p.target_month > `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}` ? (
+                        <span className="ml-1.5 sf-badge sf-badge-emerald">adelantado</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {(p.reference_number ?? p.transfer_ref ?? p.notes ?? p.notes_player) ? (
+                    <div><strong>Referencia:</strong> {p.reference_number || p.transfer_ref || p.notes || p.notes_player}</div>
+                  ) : null}
+                  {p.payment_method && p.payment_method !== 'transfer' ? (
+                    <div><strong>Método:</strong> {p.payment_method}</div>
+                  ) : null}
+                  <div><strong>Registrado:</strong> {p.created_at ? formatDateTimeDDMMYYYY(p.created_at) : '-'}</div>
                 </div>
-                {p.target_month ? (
-                  <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                    Período: {formatYearMonthLong(p.target_month)}
-                    {p.target_month > `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}` ? (
-                      <span className="ml-1.5 sf-badge sf-badge-emerald">adelantado</span>
-                    ) : null}
-                  </div>
-                ) : null}
-                {p.transfer_ref ? <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">Ref: {p.transfer_ref}</div> : null}
-                {p.notes_player ? <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">Nota jugador: {p.notes_player}</div> : null}
                 {p.receipt_file_id ? (
                   <div className="mt-2">
                     <button
@@ -884,10 +1127,22 @@ export function TreasuryPage() {
         }
       >
         {actionModal ? (
-          <div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              {actionModal.payment.player_name || actionModal.payment.player_id} · {clp(actionModal.payment.amount)}
-            </p>
+          <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+            <p><strong>Jugador:</strong> {actionModal.payment.player_name || actionModal.payment.player_id}</p>
+            {actionModal.payment.tournament_name ? (
+              <p><strong>Torneo:</strong> {actionModal.payment.tournament_name}</p>
+            ) : null}
+            <p><strong>Monto:</strong> {clp(actionModal.payment.amount_total ?? actionModal.payment.amount)}</p>
+            {actionModal.payment.target_month ? (
+              <p><strong>Período:</strong> {formatYearMonthLong(actionModal.payment.target_month)}
+                {actionModal.payment.target_month > `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}` ? (
+                  <span className="ml-1.5 sf-badge sf-badge-emerald">adelantado</span>
+                ) : null}
+              </p>
+            ) : null}
+            {(actionModal.payment.reference_number ?? actionModal.payment.transfer_ref ?? actionModal.payment.notes ?? actionModal.payment.notes_player) ? (
+              <p><strong>Referencia:</strong> {actionModal.payment.reference_number || actionModal.payment.transfer_ref || actionModal.payment.notes || actionModal.payment.notes_player}</p>
+            ) : null}
             {actionModal.payment.receipt_file_id ? (
               <p className="mt-1">
                 <button
@@ -901,14 +1156,6 @@ export function TreasuryPage() {
                 >
                   Ver comprobante
                 </button>
-              </p>
-            ) : null}
-            {actionModal.payment.target_month ? (
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                Período: {formatYearMonthLong(actionModal.payment.target_month)}
-                {actionModal.payment.target_month > `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}` ? (
-                  <span className="ml-1.5 sf-badge sf-badge-emerald">pago adelantado</span>
-                ) : null}
               </p>
             ) : null}
             <label className="mt-3 block text-sm">
@@ -937,7 +1184,10 @@ export function TreasuryPage() {
         }
       >
         {unpaidPeriodsLoading ? (
-          <p className="text-sm text-slate-600 dark:text-slate-400">Cargando…</p>
+          <div className="flex flex-col items-center justify-center gap-3 py-8 text-slate-600 dark:text-slate-400">
+            <div className="sf-loading-spinner" role="status" aria-label="Cargando" />
+            <span className="text-sm">Cargando…</span>
+          </div>
         ) : unpaidPeriodsData ? (
           <div className="space-y-3">
             <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{unpaidPeriodsData.tournament_name}</p>
@@ -981,10 +1231,33 @@ export function TreasuryPage() {
       <Modal
         open={registerOpen}
         title="Registrar pago"
-        onClose={() => { if (!saving) { setError(null); setRegisterOpen(false) } }}
+        onClose={() => {
+            if (!saving) {
+              setError(null)
+              setRegisterOpen(false)
+              if (tabBeforeRegister != null) {
+                setTab(tabBeforeRegister)
+                setTabBeforeRegister(null)
+              }
+            }
+          }}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" icon={<IconX />} onClick={() => { setError(null); setRegisterOpen(false) }} disabled={saving}>Cancelar</Button>
+            <Button
+              variant="secondary"
+              icon={<IconX />}
+              onClick={() => {
+                setError(null)
+                setRegisterOpen(false)
+                if (tabBeforeRegister != null) {
+                  setTab(tabBeforeRegister)
+                  setTabBeforeRegister(null)
+                }
+              }}
+              disabled={saving}
+            >
+              Cancelar
+            </Button>
             <Button
               variant="primary"
               icon={<IconCheck />}
@@ -994,6 +1267,7 @@ export function TreasuryPage() {
                 if (!accessToken) return
                 setError(null)
                 const err: Record<string, boolean> = {}
+                if (!registerTournamentId.trim()) err.registerTournamentId = true
                 if (!playerId.trim()) err.playerId = true
                 if (amount <= 0) err.amount = true
                 if (Object.keys(err).length > 0) {
@@ -1011,21 +1285,22 @@ export function TreasuryPage() {
                       amount: amount,
                       currency: 'CLP',
                       transfer_ref: transferRef.trim() || null,
-                      notes_player: notesPlayer.trim() || null,
+                      notes_player: transferRef.trim() || null,
                       target_month: paymentPeriod || null,
+                      tournament_id: registerTournamentId.trim() || null,
                     }),
                   })
                   setPlayerId('')
-                  setAmount(150000)
+                  setAmount(0)
                   setPaymentPeriod(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
                   setTransferRef('')
-                  setNotesPlayer('')
                   await reloadAll()
                   reloadTotals()
                   reloadPeriods()
                   reloadBreakdown()
                   setRegisterOpen(false)
                   setTab('pending')
+                  setTabBeforeRegister(null)
                 } catch (e: unknown) {
                   setError(e instanceof Error ? e.message : ERROR_MENSAJE_ES)
                 } finally {
@@ -1040,20 +1315,47 @@ export function TreasuryPage() {
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <p className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">
-            El pago se guarda como <strong>pendiente de validación</strong>. Para que cuente en la recaudación, valídalo desde la pestaña Pendientes.
+            El registro de pago se hace por torneo. El pago se guarda como <strong>pendiente de validación</strong>. Para que cuente en la recaudación, valídalo desde la pestaña Pendientes.
           </p>
           {error ? <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200 sm:col-span-2">{error}</div> : null}
           <label className="block text-sm sm:col-span-2">
+            Torneo
+            <select
+              className={`mt-1 w-full sf-input ${registerFieldErrors.registerTournamentId ? 'sf-input-invalid' : ''}`}
+              value={registerTournamentId}
+              onChange={(e) => {
+                setRegisterTournamentId(e.target.value)
+                setPlayerId('')
+                setFeeForRegister(null)
+                setRegisterFieldErrors((p) => (p.registerTournamentId ? { ...p, registerTournamentId: false } : p))
+              }}
+            >
+              <option value="">Selecciona torneo…</option>
+              {tournaments.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}{t.season_year ? ` (${t.season_year})` : ''}
+                </option>
+              ))}
+            </select>
+            {registerFieldErrors.registerTournamentId && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+          </label>
+          <label className="block text-sm sm:col-span-2">
             Jugador
+            {registerTournamentId && tournamentById[registerTournamentId] ? (
+              <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
+                (solo jugadores de {tournamentById[registerTournamentId].name})
+              </span>
+            ) : null}
             <select
               className={`mt-1 w-full sf-input ${registerFieldErrors.playerId ? 'sf-input-invalid' : ''}`}
               value={playerId}
+              disabled={!registerTournamentId}
               onChange={(e) => { setPlayerId(e.target.value); setRegisterFieldErrors((p) => (p.playerId ? { ...p, playerId: false } : p)) }}
             >
-              <option value="">Selecciona jugador…</option>
-              {playersSorted.map((p) => (
+              <option value="">{registerTournamentId ? 'Selecciona jugador…' : 'Selecciona un torneo primero'}</option>
+              {playersForRegister.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.last_name} {p.first_name} {seriesById[p.primary_series_id] ? `(${seriesById[p.primary_series_id].name})` : ''}
+                  {p.first_name} {p.last_name} {seriesById[p.primary_series_id] ? `(${seriesById[p.primary_series_id].name})` : ''}
                 </option>
               ))}
             </select>
@@ -1114,19 +1416,30 @@ export function TreasuryPage() {
             {registerFieldErrors.amount && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Ingresa un monto mayor a 0</span>}
             <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Cuota mensual sugerida al seleccionar jugador</span>
           </label>
-          <label className="block text-sm">
-            Referencia (opcional)
-            <input className="mt-1 sf-input" value={transferRef} onChange={(e) => setTransferRef(e.target.value)} />
-          </label>
           <label className="block text-sm sm:col-span-2">
-            Nota (opcional)
-            <input className="mt-1 sf-input" value={notesPlayer} onChange={(e) => setNotesPlayer(e.target.value)} />
+            Referencia (opcional)
+            <input
+              className="mt-1 sf-input"
+              value={transferRef}
+              onChange={(e) => setTransferRef(e.target.value)}
+              placeholder="Nº transferencia o nota"
+            />
           </label>
         </div>
       </Modal>
 
       {tab === 'status' ? (
         <div className="space-y-4">
+          {loadingStatus ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-600 dark:text-slate-400">
+              <div className="sf-loading-spinner" role="status" aria-label="Cargando" />
+              <span className="text-sm">Cargando…</span>
+            </div>
+          ) : feeStatus.length === 0 ? (
+            <div className="sf-card p-6 text-center text-sm text-slate-600 dark:text-slate-400">
+              {(seriesId || tournamentId) ? 'No hay jugadores para el filtro serie/torneo seleccionado.' : 'No hay jugadores con estado de cuotas.'}
+            </div>
+          ) : (
           <div className="space-y-4">
             {Object.entries(
               feeStatus.reduce<Record<string, PlayerStatus[]>>((acc, p) => {
@@ -1162,11 +1475,11 @@ export function TreasuryPage() {
                         <div
                           key={p.player_id}
                           className={`sf-card flex flex-col gap-2 p-4 ${
-                            p.status === 'atrasado' ? 'border-l-4 border-l-rose-400' : p.status === 'pendiente' ? 'border-l-4 border-l-amber-400' : ''
+                            p.status === 'atrasado' ? 'border-l-4 border-l-rose-400 dark:border-l-rose-500' : p.status === 'pendiente' ? 'border-l-4 border-l-amber-400 dark:border-l-amber-500' : p.status === 'al_dia' ? 'border-l-4 border-l-emerald-400 dark:border-l-emerald-500' : ''
                           }`}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <div className="font-medium text-slate-900">{p.player_name}</div>
+                            <div className="font-medium text-slate-900 dark:text-slate-100">{p.player_name}</div>
                             <StatusPill status={p.status} />
                           </div>
                           <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-400">
@@ -1178,7 +1491,7 @@ export function TreasuryPage() {
                                 ) : null}
                               </span>
                             ) : (
-                              <span className="text-amber-600">Sin cuota definida</span>
+                              <span className="text-amber-600 dark:text-amber-400">Sin cuota definida</span>
                             )}
                           </div>
 {(p.total_contributed ?? 0) > 0 ? (
@@ -1212,7 +1525,7 @@ export function TreasuryPage() {
                             </div>
                           ) : null}
                           {!((p.total_pending ?? 0) > 0) && !((p.credit_balance ?? 0) > 0) && p.status === 'al_dia' ? (
-                            <div className="mt-1 text-xs text-emerald-600">
+                            <div className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">
                               Al día
                               {(p.paid_months_count ?? 0) > 0 ? ` · ${p.paid_months_count} ${p.paid_months_count === 1 ? 'mes pagado' : 'meses pagados'}` : null}
                             </div>
@@ -1224,17 +1537,21 @@ export function TreasuryPage() {
                 )
               })}
           </div>
+          )}
         </div>
       ) : null}
 
       {tab === 'matrix' ? (
         <div className="space-y-4">
           {!playerMatrix ? (
-            <div className="sf-card flex flex-col items-center justify-center p-8">
+            <div className="sf-card flex flex-col items-center justify-center gap-3 py-12 text-slate-600 dark:text-slate-400">
               <div className="sf-loading-spinner" role="status" aria-label="Cargando" />
+              <span className="text-sm">Cargando…</span>
             </div>
           ) : playerMatrix.players.length === 0 ? (
-            <div className="sf-card p-4 text-sm text-slate-600 dark:text-slate-400">No hay jugadores con cargos. Las cuotas se generan automáticamente al consultar.</div>
+            <div className="sf-card p-4 text-sm text-slate-600 dark:text-slate-400">
+              {(seriesId || tournamentId) ? 'No hay jugadores con cargos para el filtro seleccionado.' : 'No hay jugadores con cargos. Las cuotas se generan automáticamente al consultar.'}
+            </div>
           ) : (
             <div className="sf-card overflow-hidden">
               <div className="overflow-x-auto">
@@ -1257,8 +1574,18 @@ export function TreasuryPage() {
                         statusFilter === 'todos'
                           ? basePlayers
                           : basePlayers.filter((p) => statusByPlayerId[p.player_id] === statusFilter)
-                      return filteredPlayers
-                    })().map((p) => (
+                      if (filteredPlayers.length === 0) {
+                        return (
+                          <tr key="_empty">
+                            <td colSpan={(playerMatrix?.periods?.length ?? 0) + 2} className="px-4 py-8 text-center text-sm text-slate-500 dark:text-slate-400">
+                              {statusFilter !== 'todos' && basePlayers.length
+                                ? `No hay jugadores con estado «${STATUS_LABEL[statusFilter]}».`
+                                : 'No hay jugadores que coincidan con el filtro.'}
+                            </td>
+                          </tr>
+                        )
+                      }
+                      return filteredPlayers.map((p) => (
                       <tr key={p.player_id} className="group border-b border-slate-100 hover:bg-slate-50/50 dark:border-slate-700 dark:hover:bg-slate-700/30">
                         <td className="sticky left-0 z-10 min-w-[140px] bg-white px-3 py-2 font-medium group-hover:bg-slate-50/80 dark:bg-slate-800 dark:group-hover:bg-slate-700/50">{p.player_name}</td>
                         <td className="px-3 py-2 text-center text-slate-600 dark:text-slate-400">{seriesById[p.series_id]?.name ?? '—'}</td>
@@ -1286,7 +1613,8 @@ export function TreasuryPage() {
                           )
                         })}
                       </tr>
-                    ))}
+                      ))
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -1299,7 +1627,6 @@ export function TreasuryPage() {
                     </span>
                     <span className="text-[11px] text-slate-600 dark:text-slate-300">Pagado</span>
                     <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-[10px] font-semibold text-white dark:bg-amber-300">
-                      •
                     </span>
                     <span className="text-[11px] text-slate-600 dark:text-slate-300">Pendiente</span>
                   </div>
@@ -1324,8 +1651,8 @@ export function TreasuryPage() {
           <div className="sf-card border border-blue-100 bg-blue-50/50 p-4 text-sm text-slate-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-slate-300">
             <div className="font-medium text-slate-900 dark:text-slate-100">Jerarquía de cuotas (pago mensual)</div>
             <p className="mt-2">
+              Cada regla se asocia a un <strong>torneo</strong>. La cuota general puede ser distinta en cada torneo.
               Define cuotas por orden de prioridad: <strong>general</strong> (para todos), <strong>por serie</strong> (sobrescribe general) o <strong>por jugador</strong> (sobrescribe serie).
-              Si un jugador no tiene cuota propia, usa la de su serie; si la serie no tiene, usa la general.
             </p>
           </div>
           <div className="flex justify-end">
@@ -1337,6 +1664,7 @@ export function TreasuryPage() {
                 setRulesFieldErrors({})
                 setRuleScope('general')
                 setRuleScopeId('')
+                setRuleTournamentId(tournamentId ?? '')
                 setRuleAmount(15000)
                 setRuleEffectiveFrom(new Date().toISOString().slice(0, 10))
                 setRuleEffectiveTo('')
@@ -1347,15 +1675,18 @@ export function TreasuryPage() {
             </Button>
           </div>
           <div className="space-y-2">
-            {feeRules.length === 0 ? (
-              <div className="sf-card p-4 text-sm text-slate-600 dark:text-slate-400">No hay reglas de cuotas. Crea una para definir montos por serie o general.</div>
+            {feeRulesFiltered.length === 0 ? (
+              <div className="sf-card p-4 text-sm text-slate-600 dark:text-slate-400">
+                {feeRules.length === 0 ? 'No hay reglas de cuotas. Crea una para definir montos por serie o general.' : 'No hay reglas que coincidan con el filtro serie/torneo.'}
+              </div>
             ) : (
-              feeRules.map((r) => (
+              feeRulesSorted.map((r) => (
                 <div key={r.id} className="sf-card flex items-center justify-between p-4">
                   <div>
                     <div className="font-medium text-slate-900 dark:text-slate-100">{ruleScopeLabel(r)} · {clp(r.amount)}/mes</div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      Período: {r.effective_from} — {r.effective_to ?? 'indefinido'} · {r.active ? 'Activa' : 'Inactiva'}
+                      {r.tournament_id ? `Torneo: ${tournamentById[r.tournament_id]?.name ?? r.tournament_id} · ` : ''}
+                      Período: {formatDateDDMMYYYY(r.effective_from)} — {r.effective_to ? formatDateDDMMYYYY(r.effective_to) : 'indefinido'} · {r.active ? 'Activa' : 'Inactiva'}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -1366,6 +1697,7 @@ export function TreasuryPage() {
                         setRulesFieldErrors({})
                         setRuleScope(r.scope)
                         setRuleScopeId(r.scope_id ?? '')
+                        setRuleTournamentId(r.tournament_id ?? tournamentId ?? '')
                         setRuleAmount(r.amount || 0)
                         setRuleEffectiveFrom(r.effective_from)
                         setRuleEffectiveTo(r.effective_to ?? '')
@@ -1446,6 +1778,7 @@ export function TreasuryPage() {
                     const err: Record<string, boolean> = {}
                     if (ruleAmount <= 0) err.ruleAmount = true
                     if (ruleScope !== 'general' && !ruleScopeId.trim()) err.ruleScopeId = true
+                    if (!ruleTournamentId.trim()) err.ruleTournamentId = true
                     if (Object.keys(err).length > 0) {
                       setRulesFieldErrors(err)
                       return
@@ -1459,6 +1792,7 @@ export function TreasuryPage() {
                           method: 'PATCH',
                           authToken: accessToken,
                           body: JSON.stringify({
+                            tournament_id: ruleTournamentId.trim() || undefined,
                             amount: ruleAmount,
                             effective_from: ruleEffectiveFrom,
                             effective_to: ruleEffectiveTo.trim() || null,
@@ -1471,6 +1805,7 @@ export function TreasuryPage() {
                           body: JSON.stringify({
                             scope: ruleScope,
                             scope_id: scopeId,
+                            tournament_id: ruleTournamentId.trim(),
                             amount: ruleAmount,
                             currency: 'CLP',
                             effective_from: ruleEffectiveFrom,
@@ -1494,6 +1829,25 @@ export function TreasuryPage() {
           >
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {error ? <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-200 sm:col-span-2">{error}</div> : null}
+              <label className="block text-sm">
+                Torneo
+                <select
+                  className={`mt-1 sf-input ${rulesFieldErrors.ruleTournamentId ? 'sf-input-invalid' : ''}`}
+                  value={ruleTournamentId}
+                  onChange={(e) => {
+                    setRuleTournamentId(e.target.value)
+                    setRulesFieldErrors((p) => (p.ruleTournamentId ? { ...p, ruleTournamentId: false } : p))
+                  }}
+                >
+                  <option value="">Selecciona…</option>
+                  {tournaments.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}{t.season_year ? ` (${t.season_year})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {rulesFieldErrors.ruleTournamentId && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
+              </label>
               <label className="block text-sm">
                 Alcance
                 <select className="mt-1 sf-input" value={ruleScope} onChange={(e) => { setRuleScope(e.target.value as FeeRule['scope']); setRuleScopeId(''); setRulesFieldErrors((p) => (p.ruleScopeId ? { ...p, ruleScopeId: false } : p)) }}>
@@ -1519,7 +1873,7 @@ export function TreasuryPage() {
                   <select className={`mt-1 sf-input ${rulesFieldErrors.ruleScopeId ? 'sf-input-invalid' : ''}`} value={ruleScopeId} onChange={(e) => { setRuleScopeId(e.target.value); setRulesFieldErrors((p) => (p.ruleScopeId ? { ...p, ruleScopeId: false } : p)) }}>
                     <option value="">Selecciona…</option>
                     {playersSorted.map((p) => (
-                      <option key={p.id} value={p.id}>{p.last_name} {p.first_name}</option>
+                      <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
                     ))}
                   </select>
                   {rulesFieldErrors.ruleScopeId && <span className="mt-1 block text-xs text-red-600 dark:text-red-400">Requerido</span>}
